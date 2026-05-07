@@ -1,0 +1,15 @@
+FROM golang:1.26-alpine AS builder
+WORKDIR /build
+
+COPY common/       ./common/
+COPY database/     ./database/
+COPY locale/       ./locale/
+COPY interactions/ ./interactions/
+
+WORKDIR /build/interactions
+RUN go mod download
+RUN go build -o /register ./cmd/register/
+
+FROM alpine:latest
+COPY --from=builder /register /register
+ENTRYPOINT ["/register"]

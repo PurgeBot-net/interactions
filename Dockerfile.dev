@@ -1,0 +1,18 @@
+FROM golang:1.26-alpine AS builder
+WORKDIR /build
+
+COPY common/       ./common/
+COPY database/     ./database/
+COPY locale/       ./locale/
+COPY interactions/ ./interactions/
+
+WORKDIR /build/interactions
+RUN sed -i 's|// replace github.com/PurgeBot-net/|replace github.com/PurgeBot-net/|g' go.mod
+RUN go mod tidy
+RUN go build -o /interactions ./cmd/
+
+FROM alpine:latest
+RUN adduser -D -g '' container
+USER container
+COPY --from=builder /interactions /interactions
+ENTRYPOINT ["/interactions"]
