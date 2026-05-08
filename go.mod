@@ -8,7 +8,7 @@ go 1.26
 
 require (
 	github.com/PurgeBot-net/common v0.0.0-20260507182621-2da2afc42337
-	github.com/PurgeBot-net/database v0.0.0-20260507182629-1149d589abc6
+	github.com/PurgeBot-net/database v0.0.0-20260508084115-16858acd9ce5
 	github.com/PurgeBot-net/locale v0.0.0-20260507182645-9bb28f351029
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/disgoorg/disgo v0.19.3
