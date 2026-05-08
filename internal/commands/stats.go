@@ -58,7 +58,6 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 
 	respond(discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeDeferredCreateMessage,
-		Data: discord.MessageCreate{Flags: discord.MessageFlagEphemeral},
 	})
 
 	lang := interactionLocale(i)
@@ -71,7 +70,7 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 
 	go func() {
 		updateErr := func(msg locale.Message) {
-			flags := discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral
+			flags := discord.MessageFlagIsComponentsV2
 			_, _ = h.r.client.Rest.UpdateInteractionResponse(appID, token, discord.MessageUpdate{
 				Components: &[]discord.LayoutComponent{
 					discord.NewContainer(discord.NewTextDisplay(msg.In(lang))),
@@ -93,7 +92,7 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 
 		if stats.TotalPurges == 0 {
 			texts = append(texts, discord.NewTextDisplay(locale.MsgStatsNoPurges.In(lang)))
-			flags := discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral
+			flags := discord.MessageFlagIsComponentsV2
 			_, _ = h.r.client.Rest.UpdateInteractionResponse(appID, token, discord.MessageUpdate{
 				Components: &[]discord.LayoutComponent{discord.NewContainer(texts...)},
 				Flags:      &flags,
@@ -125,7 +124,7 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 			}
 		}
 
-		flags := discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral
+		flags := discord.MessageFlagIsComponentsV2
 		if _, err := h.r.client.Rest.UpdateInteractionResponse(appID, token, discord.MessageUpdate{
 			Components: &components,
 			Files:      files,

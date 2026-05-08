@@ -109,7 +109,7 @@ func (h *customizeHandler) Handle(ctx context.Context, i discord.ApplicationComm
 		}); err != nil {
 			h.r.logger.Warn("reset bot nickname/avatar", zap.Error(err))
 		}
-		respond(ephemeralLocale(i, locale.MsgCustomizeCleared))
+		respond(publicLocale(i, locale.MsgCustomizeCleared))
 	}
 }
 
@@ -201,7 +201,7 @@ func (h *customizeHandler) HandleModal(ctx context.Context, i discord.ModalSubmi
 		}
 	}
 
-	respond(ephemeralLocale(i, locale.MsgCustomizeSaved))
+	respond(publicLocale(i, locale.MsgCustomizeSaved))
 }
 
 // downloadAvatar fetches a URL and returns a discord.Icon and its base64 representation.

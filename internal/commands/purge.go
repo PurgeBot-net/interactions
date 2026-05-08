@@ -326,9 +326,13 @@ func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommand
 		return
 	}
 
+	var deferFlags discord.MessageFlags
+	if isPurgeEphemeral(i, j) {
+		deferFlags = discord.MessageFlagEphemeral
+	}
 	respond(discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeDeferredCreateMessage,
-		Data: discord.NewMessageCreate().WithFlags(discord.MessageFlagEphemeral),
+		Data: discord.NewMessageCreate().WithFlags(deferFlags),
 	})
 
 	if err := job.Enqueue(ctx, h.r.redis, j); err != nil {
@@ -342,6 +346,23 @@ func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommand
 			)),
 		)
 	}
+}
+
+// isPurgeEphemeral returns true when the interaction is happening inside a channel that will be purged.
+func isPurgeEphemeral(i discord.ApplicationCommandInteraction, j *job.PurgeJob) bool {
+	switch j.TargetType {
+	case job.TargetTypeServer:
+		return true
+	case job.TargetTypeChannel:
+		return i.Channel().ID() == snowflake.ID(j.TargetID)
+	case job.TargetTypeCategory:
+		if gc, ok := i.Channel().MessageChannel.(discord.GuildChannel); ok {
+			if parentID := gc.ParentID(); parentID != nil {
+				return *parentID == snowflake.ID(j.TargetID)
+			}
+		}
+	}
+	return false
 }
 
 func (h *purgeHandler) HandleAutocomplete(ctx context.Context, i discord.AutocompleteInteraction, respond RespondFunc) {

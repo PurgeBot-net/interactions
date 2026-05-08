@@ -19,6 +19,13 @@ func ephemeralLocale(i discord.Interaction, key locale.Message) discord.Interact
 	return ephemeral(key.In(interactionLocale(i)))
 }
 
+func publicLocale(i discord.Interaction, key locale.Message) discord.InteractionResponse {
+	return discord.InteractionResponse{
+		Type: discord.InteractionResponseTypeCreateMessage,
+		Data: discord.NewMessageCreate().WithContent(key.In(interactionLocale(i))),
+	}
+}
+
 func ephemeral(msg string) discord.InteractionResponse {
 	return discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeCreateMessage,
