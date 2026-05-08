@@ -133,6 +133,18 @@ func statsCommand() discord.ApplicationCommandCreate {
 	return discord.SlashCommandCreate{
 		Name:        "stats",
 		Description: "View purge statistics for this server (Premium)",
+		Options: []discord.ApplicationCommandOption{
+			discord.ApplicationCommandOptionInt{
+				Name:        "days",
+				Description: "Time period to display (default: all time)",
+				Choices: []discord.ApplicationCommandOptionChoiceInt{
+					{Name: "Last 7 days", Value: 7},
+					{Name: "Last 14 days", Value: 14},
+					{Name: "Last 30 days", Value: 30},
+					{Name: "Last 90 days", Value: 90},
+				},
+			},
+		},
 	}
 }
 

@@ -116,6 +116,9 @@ func (s *Server) handleInteraction(w http.ResponseWriter, r *http.Request) {
 func respond(w http.ResponseWriter, resp discord.InteractionResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp) //nolint:errcheck
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func verifySignature(key ed25519.PublicKey, sigHex, timestamp string, body []byte) bool {
