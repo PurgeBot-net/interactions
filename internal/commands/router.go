@@ -2,6 +2,8 @@ package commands
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/disgo/discord"
@@ -67,6 +69,8 @@ func (r *Router) handleCommand(ctx context.Context, i discord.ApplicationCommand
 	}
 }
 
+const premiumCacheTTL = 2 * time.Minute
+
 func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) bool {
 	for _, id := range r.cfg.FreePremiumGuildIDs {
 		if id == uint64(guildID) {
@@ -76,6 +80,12 @@ func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) bool {
 	if r.cfg.PremiumSKUID == "" {
 		return false
 	}
+
+	cacheKey := fmt.Sprintf("purgebot:premium:%d", guildID)
+	if val, err := r.redis.Get(ctx, cacheKey).Result(); err == nil {
+		return val == "1"
+	}
+
 	skuID, err := snowflake.Parse(r.cfg.PremiumSKUID)
 	if err != nil {
 		return false
@@ -92,7 +102,14 @@ func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) bool {
 		r.logger.Warn("check entitlements", zap.Error(err))
 		return false
 	}
-	return len(entitlements) > 0
+
+	result := len(entitlements) > 0
+	cacheVal := "0"
+	if result {
+		cacheVal = "1"
+	}
+	r.redis.Set(ctx, cacheKey, cacheVal, premiumCacheTTL) //nolint:errcheck
+	return result
 }
 
 func (r *Router) handleAutocomplete(ctx context.Context, i discord.AutocompleteInteraction, respond RespondFunc) {

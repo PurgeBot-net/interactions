@@ -162,7 +162,7 @@ func (h *customizeHandler) HandleModal(ctx context.Context, i discord.ModalSubmi
 			respond(ephemeral("Avatar exceeds the 8 MB size limit."))
 			return
 		}
-		icon, b64, dlErr := h.downloadAvatar(att.URL)
+		icon, b64, dlErr := h.downloadAvatar(ctx, att.URL)
 		if dlErr != nil {
 			h.r.logger.Warn("download avatar", zap.Error(dlErr))
 			respond(ephemeralLocale(i, locale.MsgErrorInternal))
@@ -205,8 +205,12 @@ func (h *customizeHandler) HandleModal(ctx context.Context, i discord.ModalSubmi
 }
 
 // downloadAvatar fetches a URL and returns a discord.Icon and its base64 representation.
-func (h *customizeHandler) downloadAvatar(url string) (*discord.Icon, *string, error) {
-	resp, err := http.Get(url) //nolint:noctx
+func (h *customizeHandler) downloadAvatar(ctx context.Context, url string) (*discord.Icon, *string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, nil, err
 	}

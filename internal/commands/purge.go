@@ -256,9 +256,9 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 		j.SkipChannelIDs = skipIDs
 		job.DeletePendingJob(ctx, h.r.redis, guildID)
 
-		locked, err := job.LockGuild(ctx, h.r.redis, j.GuildID, j.ID, 30*time.Minute)
+		active, err := job.SetActiveJob(ctx, h.r.redis, j)
 		if err != nil {
-			h.r.logger.Error("lock guild (skip continue)", zap.Error(err))
+			h.r.logger.Error("set active job (skip continue)", zap.Error(err))
 			respond(discord.InteractionResponse{
 				Type: discord.InteractionResponseTypeUpdateMessage,
 				Data: discord.NewMessageUpdateV2(discord.NewContainer(
@@ -267,7 +267,7 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 			})
 			return
 		}
-		if !locked {
+		if !active {
 			respond(discord.InteractionResponse{
 				Type: discord.InteractionResponseTypeUpdateMessage,
 				Data: discord.NewMessageUpdateV2(discord.NewContainer(
@@ -287,8 +287,8 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 
 		if err := job.Enqueue(ctx, h.r.redis, j); err != nil {
 			h.r.logger.Error("enqueue job (skip continue)", zap.Error(err))
-			job.UnlockGuild(ctx, h.r.redis, j.GuildID, j.ID) //nolint:errcheck
-			h.r.client.Rest.UpdateInteractionResponse(       //nolint:errcheck
+			job.DeleteActiveJob(ctx, h.r.redis, j.GuildID)
+			h.r.client.Rest.UpdateInteractionResponse( //nolint:errcheck
 				snowflake.ID(j.ApplicationID),
 				j.InteractionToken,
 				discord.NewMessageUpdateV2(discord.NewContainer(
@@ -313,15 +313,15 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 	}
 }
 
-// enqueue locks the guild, sends the deferred response, and pushes the job to Redis.
+// enqueue stores the active job, sends the deferred response, and pushes the job to Redis.
 func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommandInteraction, j *job.PurgeJob, lang string, respond RespondFunc) {
-	locked, err := job.LockGuild(ctx, h.r.redis, j.GuildID, j.ID, 30*time.Minute)
+	active, err := job.SetActiveJob(ctx, h.r.redis, j)
 	if err != nil {
-		h.r.logger.Error("lock guild", zap.Error(err))
+		h.r.logger.Error("set active job", zap.Error(err))
 		respond(ephemeralLocale(i, locale.MsgErrorInternal))
 		return
 	}
-	if !locked {
+	if !active {
 		respond(ephemeralLocale(i, locale.MsgPurgeAlreadyRunning))
 		return
 	}
@@ -333,8 +333,8 @@ func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommand
 
 	if err := job.Enqueue(ctx, h.r.redis, j); err != nil {
 		h.r.logger.Error("enqueue purge job", zap.Error(err))
-		job.UnlockGuild(ctx, h.r.redis, j.GuildID, j.ID) //nolint:errcheck
-		h.r.client.Rest.UpdateInteractionResponse(       //nolint:errcheck
+		job.DeleteActiveJob(ctx, h.r.redis, j.GuildID)
+		h.r.client.Rest.UpdateInteractionResponse( //nolint:errcheck
 			snowflake.ID(j.ApplicationID),
 			j.InteractionToken,
 			discord.NewMessageUpdateV2(discord.NewContainer(
