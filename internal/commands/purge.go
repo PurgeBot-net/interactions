@@ -54,14 +54,15 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	lang := interactionLocale(i)
 
 	j := &job.PurgeJob{
-		ID:               fmt.Sprintf("%d-%d", *i.GuildID(), time.Now().UnixNano()),
-		GuildID:          uint64(*i.GuildID()),
-		Locale:           lang,
-		PurgeType:        purgeType,
-		ApplicationID:    uint64(i.ApplicationID()),
-		InteractionToken: i.Token(),
-		RequestedByID:    uint64(i.User().ID),
-		CreatedAt:        time.Now(),
+		ID:                   fmt.Sprintf("%d-%d", *i.GuildID(), time.Now().UnixNano()),
+		GuildID:              uint64(*i.GuildID()),
+		Locale:               lang,
+		PurgeType:            purgeType,
+		ApplicationID:        uint64(i.ApplicationID()),
+		InteractionToken:     i.Token(),
+		InteractionChannelID: uint64(i.Channel().ID()),
+		RequestedByID:        uint64(i.User().ID),
+		CreatedAt:            time.Now(),
 	}
 
 	if targetStr, ok := data.OptString("target_id"); ok {
