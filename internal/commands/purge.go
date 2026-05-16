@@ -42,6 +42,7 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		"user":     job.PurgeTypeUser,
 		"role":     job.PurgeTypeRole,
 		"everyone": job.PurgeTypeEveryone,
+		"bot":      job.PurgeTypeBot,
 		"inactive": job.PurgeTypeInactive,
 		"webhook":  job.PurgeTypeWebhook,
 		"deleted":  job.PurgeTypeDeleted,

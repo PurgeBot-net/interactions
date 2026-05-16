@@ -27,6 +27,7 @@ func purgeCommand() discord.ApplicationCommandCreate {
 			purgeSubcommand("everyone", "Delete all messages in the target",
 				discord.ApplicationCommandOptionBool{Name: "include_bots", Description: "Include bot messages"},
 			),
+			purgeSubcommand("bot", "Delete all bot messages in the target"),
 			purgeSubcommand("inactive", "Delete messages from users who left",
 				discord.ApplicationCommandOptionBool{Name: "include_bots", Description: "Include bot messages"},
 			),
