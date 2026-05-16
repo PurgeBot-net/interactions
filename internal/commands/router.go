@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/disgoorg/disgo/bot"
@@ -133,9 +134,9 @@ func (r *Router) handleModal(ctx context.Context, i discord.ModalSubmitInteracti
 func (r *Router) handleComponent(ctx context.Context, i discord.ComponentInteraction, respond RespondFunc) {
 	id := i.Data.CustomID()
 	switch {
-	case len(id) > 7 && id[:7] == "cancel:":
+	case strings.HasPrefix(id, "cancel:"):
 		newPurgeHandler(r).HandleCancel(ctx, i, respond)
-	case len(id) > 5 && id[:5] == "skip:":
+	case strings.HasPrefix(id, "skip:"):
 		newPurgeHandler(r).HandleSkip(ctx, i, respond)
 	}
 }
