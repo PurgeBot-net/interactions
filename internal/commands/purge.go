@@ -346,7 +346,6 @@ func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommand
 	}
 }
 
-
 func (h *purgeHandler) HandleAutocomplete(ctx context.Context, i discord.AutocompleteInteraction, respond RespondFunc) {
 	if i.GuildID() == nil {
 		respond(autocompleteResult(nil))
