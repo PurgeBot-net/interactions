@@ -279,7 +279,7 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 			return
 		}
 
-		// Acknowledge and start. The purge worker updates the original message via j.InteractionToken.
+		// Acknowledge and start. The purge worker creates a durable channel status message.
 		respond(discord.InteractionResponse{
 			Type: discord.InteractionResponseTypeUpdateMessage,
 			Data: discord.NewMessageUpdateV2(discord.NewContainer(
@@ -317,21 +317,33 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 
 // enqueue stores the active job, sends the deferred response, and pushes the job to Redis.
 func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommandInteraction, j *job.PurgeJob, lang string, respond RespondFunc) {
-	active, err := job.SetActiveJob(ctx, h.r.redis, j)
-	if err != nil {
-		h.r.logger.Error("set active job", zap.Error(err))
-		respond(ephemeralLocale(i, locale.MsgErrorInternal))
-		return
-	}
-	if !active {
-		respond(ephemeralLocale(i, locale.MsgPurgeAlreadyRunning))
-		return
-	}
-
 	respond(discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeDeferredCreateMessage,
 		Data: discord.NewMessageCreate(),
 	})
+
+	active, err := job.SetActiveJob(ctx, h.r.redis, j)
+	if err != nil {
+		h.r.logger.Error("set active job", zap.Error(err))
+		h.r.client.Rest.UpdateInteractionResponse( //nolint:errcheck
+			snowflake.ID(j.ApplicationID),
+			j.InteractionToken,
+			discord.NewMessageUpdateV2(discord.NewContainer(
+				discord.NewTextDisplay(locale.MsgErrorInternal.In(lang)),
+			)),
+		)
+		return
+	}
+	if !active {
+		h.r.client.Rest.UpdateInteractionResponse( //nolint:errcheck
+			snowflake.ID(j.ApplicationID),
+			j.InteractionToken,
+			discord.NewMessageUpdateV2(discord.NewContainer(
+				discord.NewTextDisplay(locale.MsgPurgeAlreadyRunning.In(lang)),
+			)),
+		)
+		return
+	}
 
 	if err := job.Enqueue(ctx, h.r.redis, j); err != nil {
 		h.r.logger.Error("enqueue purge job", zap.Error(err))
