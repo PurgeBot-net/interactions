@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -102,6 +103,14 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	}
 	if user, ok := data.OptUser("skip_user"); ok {
 		j.SkipUserID = uint64(user.ID)
+	}
+	if refs, ok := data.OptString("skip_messages"); ok {
+		ids, bad := parseMessageRefs(refs)
+		if bad != "" {
+			respond(ephemeral(locale.MsgPurgeInvalidMessageRef.In(lang, bad)))
+			return
+		}
+		j.SkipMessageIDs = ids
 	}
 
 	switch purgeType {
@@ -466,4 +475,45 @@ func (h *purgeHandler) HandleCancel(ctx context.Context, i discord.ComponentInte
 			discord.NewTextDisplay(locale.MsgCancelRequested.In(lang)),
 		)),
 	})
+}
+
+// parseMessageRefs accepts a comma-separated mix of message IDs and message links,
+// returning the first unparseable entry rather than skipping it silently.
+func parseMessageRefs(raw string) ([]uint64, string) {
+	var ids []uint64
+	for _, ref := range strings.Split(raw, ",") {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		id, ok := messageIDFromRef(ref)
+		if !ok {
+			return nil, ref
+		}
+		if !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, ""
+}
+
+func messageIDFromRef(ref string) (uint64, bool) {
+	if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
+		return id, true
+	}
+	// Any host Discord serves links from: discord.com, ptb./canary. subdomains and
+	// the legacy discordapp.com all share the /channels/guild/channel/message tail.
+	i := strings.Index(ref, "/channels/")
+	if i < 0 {
+		return 0, false
+	}
+	tail := ref[i+len("/channels/"):]
+	tail, _, _ = strings.Cut(tail, "?")
+	tail, _, _ = strings.Cut(tail, "#")
+	parts := strings.Split(strings.Trim(tail, "/"), "/")
+	if len(parts) != 3 {
+		return 0, false
+	}
+	id, err := strconv.ParseUint(parts[2], 10, 64)
+	return id, err == nil
 }

@@ -72,6 +72,7 @@ func purgeSubcommand(name, description string, extra ...discord.ApplicationComma
 		discord.ApplicationCommandOptionBool{Name: "include_threads", Description: "Include thread messages"},
 		discord.ApplicationCommandOptionBool{Name: "skip_channels", Description: "Interactively choose channels to skip (category only)"},
 		discord.ApplicationCommandOptionUser{Name: "skip_user", Description: "Never delete this user's messages"},
+		discord.ApplicationCommandOptionString{Name: "skip_messages", Description: "Message links or IDs to never delete, comma-separated"},
 	}
 
 	for _, opt := range extra {
