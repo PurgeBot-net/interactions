@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/snowflake/v2"
@@ -477,15 +478,13 @@ func (h *purgeHandler) HandleCancel(ctx context.Context, i discord.ComponentInte
 	})
 }
 
-// parseMessageRefs accepts a comma-separated mix of message IDs and message links,
+// parseMessageRefs accepts message IDs and links separated by commas or whitespace,
 // returning the first unparseable entry rather than skipping it silently.
 func parseMessageRefs(raw string) ([]uint64, string) {
 	var ids []uint64
-	for _, ref := range strings.Split(raw, ",") {
-		ref = strings.TrimSpace(ref)
-		if ref == "" {
-			continue
-		}
+	for _, ref := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	}) {
 		id, ok := messageIDFromRef(ref)
 		if !ok {
 			return nil, ref
@@ -498,6 +497,8 @@ func parseMessageRefs(raw string) ([]uint64, string) {
 }
 
 func messageIDFromRef(ref string) (uint64, bool) {
+	// Links are often pasted wrapped in <> to suppress the embed.
+	ref = strings.TrimSuffix(strings.TrimPrefix(ref, "<"), ">")
 	if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
 		return id, true
 	}
