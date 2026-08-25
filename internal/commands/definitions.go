@@ -55,7 +55,7 @@ func purgeSubcommand(name, description string, extra ...discord.ApplicationComma
 			MinValue:    ptr(1),
 			MaxValue:    ptr(30),
 		},
-		discord.ApplicationCommandOptionString{Name: "filter", Description: "Text or regex pattern to match"},
+		discord.ApplicationCommandOptionString{Name: "filter", Description: "Text or regex pattern to match text or attachments"},
 		discord.ApplicationCommandOptionString{
 			Name:        "filter_mode",
 			Description: "How to apply the filter",
@@ -67,9 +67,11 @@ func purgeSubcommand(name, description string, extra ...discord.ApplicationComma
 				{Name: "ends_with", Value: "ends_with"},
 			},
 		},
+		discord.ApplicationCommandOptionBool{Name: "filter_keep", Description: "Keep what the filter matches and delete everything else"},
 		discord.ApplicationCommandOptionBool{Name: "case_sensitive", Description: "Case-sensitive filter"},
 		discord.ApplicationCommandOptionBool{Name: "include_threads", Description: "Include thread messages"},
 		discord.ApplicationCommandOptionBool{Name: "skip_channels", Description: "Interactively choose channels to skip (category only)"},
+		discord.ApplicationCommandOptionUser{Name: "skip_user", Description: "Never delete this user's messages"},
 	}
 
 	for _, opt := range extra {

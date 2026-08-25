@@ -88,6 +88,9 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	if mode, ok := data.OptString("filter_mode"); ok {
 		j.FilterMode = job.FilterMode(mode)
 	}
+	if keep, ok := data.OptBool("filter_keep"); ok {
+		j.FilterKeep = keep
+	}
 	if cs, ok := data.OptBool("case_sensitive"); ok {
 		j.CaseSensitive = cs
 	}
@@ -96,6 +99,9 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	}
 	if ib, ok := data.OptBool("include_bots"); ok {
 		j.IncludeBots = ib
+	}
+	if user, ok := data.OptUser("skip_user"); ok {
+		j.SkipUserID = uint64(user.ID)
 	}
 
 	switch purgeType {
