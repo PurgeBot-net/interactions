@@ -6,6 +6,7 @@ import "github.com/disgoorg/disgo/discord"
 func GlobalCommands() []discord.ApplicationCommandCreate {
 	return []discord.ApplicationCommandCreate{
 		purgeCommand(),
+		cancelCommand(),
 		helpCommand(),
 		customizeCommand(),
 		statsCommand(),
@@ -110,6 +111,13 @@ func optionIsRequired(opt discord.ApplicationCommandOption) bool {
 		return o.Required
 	default:
 		return false
+	}
+}
+
+func cancelCommand() discord.ApplicationCommandCreate {
+	return discord.SlashCommandCreate{
+		Name:        "cancel",
+		Description: "Cancel a purge you started",
 	}
 }
 

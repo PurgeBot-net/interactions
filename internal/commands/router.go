@@ -59,6 +59,8 @@ func (r *Router) handleCommand(ctx context.Context, i discord.ApplicationCommand
 	switch i.Data.CommandName() {
 	case "purge":
 		newPurgeHandler(r).Handle(ctx, i, respond)
+	case "cancel":
+		newCancelHandler(r).Handle(ctx, i, respond)
 	case "help":
 		newHelpHandler(r).Handle(ctx, i, respond)
 	case "customize":
