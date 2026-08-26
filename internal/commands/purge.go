@@ -114,14 +114,29 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		j.SkipMessageIDs = ids
 	}
 
+	// An unresolved user or role would enqueue a job that silently matches nothing.
 	switch purgeType {
 	case job.PurgeTypeUser:
-		if user, ok := data.OptUser("user"); ok {
-			j.FilterUserID = uint64(user.ID)
+		user, ok := data.OptUser("user")
+		if !ok {
+			respond(ephemeralLocale(i, locale.MsgPurgeInvalidTarget))
+			return
 		}
+		j.FilterUserID = uint64(user.ID)
+
 	case job.PurgeTypeRole:
-		if role, ok := data.OptRole("role"); ok {
-			j.FilterRoleID = uint64(role.ID)
+		role, ok := data.OptRole("role")
+		if !ok {
+			respond(ephemeralLocale(i, locale.MsgPurgeInvalidTarget))
+			return
+		}
+		j.FilterRoleID = uint64(role.ID)
+
+	case job.PurgeTypeEveryone:
+		// Channel or category only, matching the help text and the autocomplete.
+		if j.TargetType == job.TargetTypeServer {
+			respond(ephemeralLocale(i, locale.MsgPurgeInvalidTarget))
+			return
 		}
 	}
 
