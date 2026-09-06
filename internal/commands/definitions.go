@@ -117,7 +117,7 @@ func optionIsRequired(opt discord.ApplicationCommandOption) bool {
 func cancelCommand() discord.ApplicationCommandCreate {
 	return discord.SlashCommandCreate{
 		Name:        "cancel",
-		Description: "Cancel a purge you started",
+		Description: "Cancel a running purge",
 	}
 }
 

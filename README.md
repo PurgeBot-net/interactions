@@ -11,6 +11,7 @@ Discord interactions service for PurgeBot. Receives slash commands, modals, and 
 - Handles autocomplete for the `target_id` option on `/purge`
 - Handles the `customize_modal` modal submission
 - Handles purge cancellation and channel-skip UI via `cancel:*` and `skip:*` components
+- Authorises a cancel on job ownership or server ownership, never on a permission
 - Exposes `GET /health` for container health checks
 
 ## Configuration

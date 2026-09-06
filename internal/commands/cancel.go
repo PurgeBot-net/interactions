@@ -14,7 +14,7 @@ type cancelHandler struct{ r *Router }
 
 func newCancelHandler(r *Router) *cancelHandler { return &cancelHandler{r} }
 
-// Gated on job ownership and nothing else — no permission check, like the cancel button.
+// Gated on job ownership or guild ownership, like the cancel button. No permission check.
 func (h *cancelHandler) Handle(ctx context.Context, i discord.ApplicationCommandInteraction, respond RespondFunc) {
 	if i.GuildID() == nil {
 		respond(ephemeralLocale(i, locale.MsgErrorGuildOnly))
@@ -22,7 +22,6 @@ func (h *cancelHandler) Handle(ctx context.Context, i discord.ApplicationCommand
 	}
 
 	guildID := uint64(*i.GuildID())
-	userID := uint64(i.User().ID)
 	lang := interactionLocale(i)
 
 	active, err := job.GetActiveJob(ctx, h.r.redis, guildID)
@@ -32,7 +31,7 @@ func (h *cancelHandler) Handle(ctx context.Context, i discord.ApplicationCommand
 		return
 	}
 	if active != nil {
-		if active.RequestedByID != userID {
+		if !h.r.canCancelJob(ctx, i, active.RequestedByID) {
 			respond(ephemeralLocale(i, locale.MsgCancelNotAllowed))
 			return
 		}
@@ -55,7 +54,7 @@ func (h *cancelHandler) Handle(ctx context.Context, i discord.ApplicationCommand
 		respond(ephemeralLocale(i, locale.MsgCancelNothingRunning))
 		return
 	}
-	if pending.RequestedByID != userID {
+	if !h.r.canCancelJob(ctx, i, pending.RequestedByID) {
 		respond(ephemeralLocale(i, locale.MsgCancelNotAllowed))
 		return
 	}

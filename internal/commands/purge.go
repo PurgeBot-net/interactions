@@ -332,7 +332,7 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 
 	case "cancel":
 		j, _ := job.GetPendingJob(ctx, h.r.redis, guildID)
-		if j != nil && i.User().ID != snowflake.ID(j.RequestedByID) {
+		if j != nil && !h.r.canCancelJob(ctx, i, j.RequestedByID) {
 			respond(ephemeral(locale.MsgCancelNotAllowed.In(lang)))
 			return
 		}
@@ -472,10 +472,11 @@ func (h *purgeHandler) HandleAutocomplete(ctx context.Context, i discord.Autocom
 
 func (h *purgeHandler) HandleCancel(ctx context.Context, i discord.ComponentInteraction, respond RespondFunc) {
 	// Custom ID format: "cancel:{jobID}:{requestedByID}"
-	rest := i.Data.CustomID()[7:] // strip "cancel:"
-	jobID, requesterID, _ := strings.Cut(rest, ":")
+	tail := i.Data.CustomID()[7:] // strip "cancel:"
+	jobID, requesterID, _ := strings.Cut(tail, ":")
 
-	if requesterID != i.User().ID.String() {
+	requestedByID, _ := strconv.ParseUint(requesterID, 10, 64)
+	if !h.r.canCancelJob(ctx, i, requestedByID) {
 		respond(ephemeral(locale.MsgCancelNotAllowed.In(interactionLocale(i))))
 		return
 	}
