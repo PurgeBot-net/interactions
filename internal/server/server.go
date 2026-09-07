@@ -11,6 +11,7 @@ import (
 
 	"github.com/disgoorg/disgo"
 	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/cache"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -36,7 +37,10 @@ func New(cfg config.Config, logger *zap.Logger, db *database.Database, redis *re
 		return nil, fmt.Errorf("DISCORD_PUBLIC_KEY must be a %d-byte hex string", ed25519.PublicKeySize)
 	}
 
-	client, err := disgo.New(cfg.Token)
+	// disgo's default; stated so it cannot silently change.
+	client, err := disgo.New(cfg.Token,
+		bot.WithCacheConfigOpts(cache.WithCaches(cache.FlagsNone)),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("create discord client: %w", err)
 	}
