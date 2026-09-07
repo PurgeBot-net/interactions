@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/snowflake/v2"
 	"go.uber.org/zap"
 
@@ -170,14 +171,13 @@ func (h *purgeHandler) handleSkipChannelsUI(ctx context.Context, i discord.Appli
 		if ch.ParentID() == nil || uint64(*ch.ParentID()) != j.TargetID {
 			continue
 		}
-		switch ch.Type() {
-		case discord.ChannelTypeGuildText, discord.ChannelTypeGuildNews,
-			discord.ChannelTypeGuildVoice, discord.ChannelTypeGuildForum:
-			options = append(options, discord.StringSelectMenuOption{
-				Label: strings.TrimSpace(channelEmoji(ch.Type())) + ch.Name(),
-				Value: ch.ID().String(),
-			})
+		if !isPurgeableChannel(ch.Type()) {
+			continue
 		}
+		options = append(options, discord.StringSelectMenuOption{
+			Label: channelPrefix(ch.Type()) + ch.Name(),
+			Value: ch.ID().String(),
+		})
 	}
 
 	if len(options) == 0 {
@@ -412,77 +412,21 @@ func (h *purgeHandler) HandleAutocomplete(ctx context.Context, i discord.Autocom
 
 	var query string
 	_ = json.Unmarshal(i.Data.Focused().Value, &query)
-	query = strings.ToLower(query)
 
 	excludeServer := i.Data.SubCommandName != nil && *i.Data.SubCommandName == "everyone"
 
-	channels, err := h.r.client.Rest.GetGuildChannels(*i.GuildID())
+	// Unbounded, this shares a rate-limit bucket with the purge permission gate and can stall it.
+	acCtx, cancel := context.WithTimeout(ctx, purgeGateTimeout)
+	defer cancel()
+
+	channels, err := h.r.client.Rest.GetGuildChannels(*i.GuildID(), rest.WithCtx(acCtx))
 	if err != nil {
 		h.r.logger.Error("get guild channels for autocomplete", zap.Error(err))
 		respond(autocompleteResult(nil))
 		return
 	}
 
-	categoryHasText := map[string]bool{}
-	for _, ch := range channels {
-		if ch.Type() != discord.ChannelTypeGuildCategory && ch.ParentID() != nil {
-			switch ch.Type() {
-			case discord.ChannelTypeGuildText,
-				discord.ChannelTypeGuildNews,
-				discord.ChannelTypeGuildVoice,
-				discord.ChannelTypeGuildForum:
-				categoryHasText[ch.ParentID().String()] = true
-			}
-		}
-	}
-
-	var choices []discord.AutocompleteChoice
-
-	if !excludeServer && matches("server", query) {
-		choices = append(choices, discord.AutocompleteChoiceString{
-			Name:  "📍 Server",
-			Value: "server:" + i.GuildID().String(),
-		})
-	}
-
-	for _, ch := range channels {
-		if ch.Type() != discord.ChannelTypeGuildCategory {
-			continue
-		}
-		if !categoryHasText[ch.ID().String()] {
-			continue
-		}
-		if !matches(ch.Name(), query) {
-			continue
-		}
-		choices = append(choices, discord.AutocompleteChoiceString{
-			Name:  "📁 " + ch.Name(),
-			Value: "category:" + ch.ID().String(),
-		})
-	}
-
-	for _, ch := range channels {
-		switch ch.Type() {
-		case discord.ChannelTypeGuildText,
-			discord.ChannelTypeGuildNews,
-			discord.ChannelTypeGuildVoice,
-			discord.ChannelTypeGuildForum:
-		default:
-			continue
-		}
-		if !matches(ch.Name(), query) {
-			continue
-		}
-		choices = append(choices, discord.AutocompleteChoiceString{
-			Name:  channelEmoji(ch.Type()) + ch.Name(),
-			Value: "channel:" + ch.ID().String(),
-		})
-	}
-
-	if len(choices) > 25 {
-		choices = choices[:25]
-	}
-	respond(autocompleteResult(choices))
+	respond(autocompleteResult(targetChoices(channelRows(channels), query, *i.GuildID(), excludeServer)))
 }
 
 func (h *purgeHandler) HandleCancel(ctx context.Context, i discord.ComponentInteraction, respond RespondFunc) {

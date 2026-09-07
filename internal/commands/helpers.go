@@ -57,7 +57,17 @@ func matches(name, query string) bool {
 	return query == "" || strings.Contains(strings.ToLower(name), query)
 }
 
-func channelEmoji(t discord.ChannelType) string {
+func isPurgeableChannel(t discord.ChannelType) bool {
+	switch t {
+	case discord.ChannelTypeGuildText, discord.ChannelTypeGuildNews,
+		discord.ChannelTypeGuildVoice, discord.ChannelTypeGuildForum:
+		return true
+	}
+	return false
+}
+
+// Only the kinds a purge treats differently earn a mark; text reads as the client writes it.
+func channelPrefix(t discord.ChannelType) string {
 	switch t {
 	case discord.ChannelTypeGuildNews:
 		return "📢 "
@@ -66,7 +76,7 @@ func channelEmoji(t discord.ChannelType) string {
 	case discord.ChannelTypeGuildForum:
 		return "💭 "
 	default:
-		return "💬 "
+		return "#"
 	}
 }
 
