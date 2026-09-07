@@ -146,6 +146,11 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		return
 	}
 
+	if refusal, blocked := h.r.checkPurgePermissions(ctx, i, j, lang); blocked {
+		respond(ephemeralContainer(refusal))
+		return
+	}
+
 	h.enqueue(ctx, i, j, lang, respond)
 }
 
@@ -288,6 +293,16 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 		skipIDs, _ := job.GetSkipSelection(ctx, h.r.redis, guildID)
 		j.SkipChannelIDs = skipIDs
 		job.DeletePendingJob(ctx, h.r.redis, guildID)
+
+		if refusal, blocked := h.r.checkPurgePermissions(ctx, i, j, lang); blocked {
+			respond(discord.InteractionResponse{
+				Type: discord.InteractionResponseTypeUpdateMessage,
+				Data: discord.NewMessageUpdateV2(discord.NewContainer(
+					discord.NewTextDisplay(refusal),
+				)),
+			})
+			return
+		}
 
 		active, err := job.SetActiveJob(ctx, h.r.redis, j)
 		if err != nil {

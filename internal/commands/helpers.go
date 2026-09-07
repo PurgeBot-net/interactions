@@ -43,6 +43,16 @@ func containerMessage(text string) discord.InteractionResponse {
 	}
 }
 
+func ephemeralContainer(text string) discord.InteractionResponse {
+	return discord.InteractionResponse{
+		Type: discord.InteractionResponseTypeCreateMessage,
+		Data: discord.MessageCreate{
+			Flags:      discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral,
+			Components: []discord.LayoutComponent{discord.NewContainer(discord.NewTextDisplay(text))},
+		},
+	}
+}
+
 func matches(name, query string) bool {
 	return query == "" || strings.Contains(strings.ToLower(name), query)
 }
