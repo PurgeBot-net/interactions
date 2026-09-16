@@ -20,13 +20,24 @@ const (
 	// Three calls share this, inside Discord's 3s window.
 	purgeGateTimeout = 1200 * time.Millisecond
 
-	// permissions=74752, the set the invite asks for (help.go).
+	// The set a channel must grant to be purgeable at all. Deliberately narrower than the
+	// invite (help.go): widening it here starts skipping channels in the purger.
 	requiredPurgePerms = discord.PermissionViewChannel |
 		discord.PermissionReadMessageHistory |
 		discord.PermissionManageMessages
 
+	// Editing a message the bot authored needs only View Channel; Send Messages is a
+	// create-time requirement, demanded only where one must actually be posted.
+	statusEditPerms = discord.PermissionViewChannel
+
 	maxDeficitLines = 25
+
+	// The loading flag clears on the purger's first edit, tens of seconds on a large guild.
+	followupAttempts   = 12
+	followupRetryDelay = 2 * time.Second
 )
+
+var errResponseStillLoading = errors.New("interaction response still loading")
 
 type channelDeficit struct {
 	ChannelID snowflake.ID
@@ -208,6 +219,32 @@ func missingForChannel(have discord.Permissions) discord.Permissions {
 	return requiredPurgePerms &^ have
 }
 
+// mustCreate: a public deferred reply leaves the purger a message to edit, an ephemeral one
+// forces a create. Nil AppPermissions is Discord not telling us, so it warns nobody.
+func missingStatusSurfacePerms(app *discord.Permissions, kind discord.ChannelType, mustCreate bool) discord.Permissions {
+	if app == nil || app.Has(discord.PermissionAdministrator) {
+		return 0
+	}
+	want := statusEditPerms
+	if mustCreate {
+		if channelTypeIsThread(kind) {
+			want |= discord.PermissionSendMessagesInThreads
+		} else {
+			want |= discord.PermissionSendMessages
+		}
+	}
+	return want &^ *app
+}
+
+func channelTypeIsThread(t discord.ChannelType) bool {
+	switch t {
+	case discord.ChannelTypeGuildNewsThread, discord.ChannelTypeGuildPublicThread, discord.ChannelTypeGuildPrivateThread:
+		return true
+	default:
+		return false
+	}
+}
+
 var permissionNameTable = []struct {
 	bit  discord.Permissions
 	name string
@@ -215,6 +252,8 @@ var permissionNameTable = []struct {
 	{discord.PermissionViewChannel, "View Channel"},
 	{discord.PermissionReadMessageHistory, "Read Message History"},
 	{discord.PermissionManageMessages, "Manage Messages"},
+	{discord.PermissionSendMessages, "Send Messages"},
+	{discord.PermissionSendMessagesInThreads, "Send Messages in Threads"},
 }
 
 // discord.Permissions.String ranges a map, so its order varies between calls.

@@ -152,7 +152,56 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		return
 	}
 
-	h.enqueue(ctx, i, j, lang, respond)
+	if !h.enqueue(ctx, i, j, lang, respond) {
+		return
+	}
+	// After enqueue: a warning about a purge that never started is noise.
+	if gap := missingStatusSurfacePerms(i.AppPermissions(), i.Channel().Type(), false); gap != 0 {
+		h.r.warnStatusSurface(context.WithoutCancel(ctx), j, lang, uint64(i.Channel().ID()), gap)
+	}
+}
+
+// Must outlive the HTTP request: Go terminates the chunked body only when the handler returns,
+// so a REST call here spends Discord's 3s deadline.
+func (r *Router) warnStatusSurface(ctx context.Context, j *job.PurgeJob, lang string, channelID uint64, gap discord.Permissions) {
+	r.logger.Info("status surface degraded in invoking channel",
+		zap.String("guild_id", strconv.FormatUint(j.GuildID, 10)),
+		zap.String("channel_id", strconv.FormatUint(channelID, 10)),
+		zap.String("missing", permissionNames(gap)),
+	)
+	body := ephemeralContainerCreate(locale.MsgPurgeNoStatusChannel.In(lang, permissionNames(gap)))
+
+	go func() {
+		var err error
+		for attempt := range followupAttempts {
+			if attempt > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(followupRetryDelay):
+				}
+			}
+			// A followup sent while the reply is still loading edits that reply instead and
+			// drops the ephemeral flag, so the warning would replace the status message and
+			// then be overwritten by the purger's first edit.
+			msg, getErr := r.client.Rest.GetInteractionResponse(
+				snowflake.ID(j.ApplicationID), j.InteractionToken, rest.WithCtx(ctx))
+			if getErr != nil {
+				err = getErr
+				continue
+			}
+			if msg.Flags.Has(discord.MessageFlagLoading) {
+				err = errResponseStillLoading
+				continue
+			}
+			if _, err = r.client.Rest.CreateFollowupMessage(
+				snowflake.ID(j.ApplicationID), j.InteractionToken, body, rest.WithCtx(ctx)); err == nil {
+				return
+			}
+			break
+		}
+		r.logger.Warn("deliver status surface warning", zap.Error(err))
+	}()
 }
 
 // handleSkipChannelsUI shows an interactive channel-selection UI and stores the pending job.
@@ -325,12 +374,22 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 			return
 		}
 
-		// Acknowledge and start. The purge worker creates a durable channel status message.
+		// Acknowledge and start. This reply is ephemeral, so the worker must create its own
+		// status message rather than adopt one.
+		texts := []discord.ContainerSubComponent{
+			discord.NewTextDisplay(locale.MsgPurgeStatusStarting.In(lang)),
+		}
+		if gap := missingStatusSurfacePerms(i.AppPermissions(), i.Channel().Type(), true); gap != 0 {
+			texts = append(texts, discord.NewTextDisplay(locale.MsgPurgeNoStatusMessage.In(lang, permissionNames(gap))))
+			h.r.logger.Info("status surface degraded in invoking channel",
+				zap.String("guild_id", guildIDStr),
+				zap.String("channel_id", i.Channel().ID().String()),
+				zap.String("missing", permissionNames(gap)),
+			)
+		}
 		respond(discord.InteractionResponse{
 			Type: discord.InteractionResponseTypeUpdateMessage,
-			Data: discord.NewMessageUpdateV2(discord.NewContainer(
-				discord.NewTextDisplay(locale.MsgPurgeStatusStarting.In(lang)),
-			)),
+			Data: discord.NewMessageUpdateV2(discord.NewContainer(texts...)),
 		})
 
 		if err := job.Enqueue(ctx, h.r.redis, j); err != nil {
@@ -362,7 +421,8 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 }
 
 // enqueue stores the active job, sends the deferred response, and pushes the job to Redis.
-func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommandInteraction, j *job.PurgeJob, lang string, respond RespondFunc) {
+// Reports whether the job actually reached the queue.
+func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommandInteraction, j *job.PurgeJob, lang string, respond RespondFunc) bool {
 	respond(discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeDeferredCreateMessage,
 		Data: discord.NewMessageCreate(),
@@ -378,7 +438,7 @@ func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommand
 				discord.NewTextDisplay(locale.MsgErrorInternal.In(lang)),
 			)),
 		)
-		return
+		return false
 	}
 	if !active {
 		h.r.client.Rest.UpdateInteractionResponse( //nolint:errcheck
@@ -388,7 +448,7 @@ func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommand
 				discord.NewTextDisplay(locale.MsgPurgeAlreadyRunning.In(lang)),
 			)),
 		)
-		return
+		return false
 	}
 
 	if err := job.Enqueue(ctx, h.r.redis, j); err != nil {
@@ -401,7 +461,9 @@ func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommand
 				discord.NewTextDisplay(locale.MsgErrorInternalStart.In(lang)),
 			)),
 		)
+		return false
 	}
+	return true
 }
 
 func (h *purgeHandler) HandleAutocomplete(ctx context.Context, i discord.AutocompleteInteraction, respond RespondFunc) {

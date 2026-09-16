@@ -13,6 +13,12 @@ type helpHandler struct{ r *Router }
 
 func newHelpHandler(r *Router) *helpHandler { return &helpHandler{r} }
 
+// Scopes and permissions come from Default Install Settings in the portal. Adding scope,
+// integration_type or redirect_uri would silently take the URL back to overriding them.
+func inviteURL(applicationID uint64) string {
+	return fmt.Sprintf("https://discord.com/oauth2/authorize?client_id=%d", applicationID)
+}
+
 func (h *helpHandler) Handle(ctx context.Context, i discord.ApplicationCommandInteraction, respond RespondFunc) {
 	lang := interactionLocale(i)
 
@@ -40,7 +46,7 @@ func (h *helpHandler) Handle(ctx context.Context, i discord.ApplicationCommandIn
 				Style: discord.ButtonStyleLink,
 				Label: locale.MsgHelpButtonInvite.In(lang),
 				Emoji: &discord.ComponentEmoji{Name: "🔗"},
-				URL:   "https://discord.com/oauth2/authorize?client_id=" + fmt.Sprintf("%d", h.r.cfg.ApplicationID) + "&permissions=74752&integration_type=0&scope=bot",
+				URL:   inviteURL(h.r.cfg.ApplicationID),
 			},
 			discord.ButtonComponent{
 				Style: discord.ButtonStyleLink,

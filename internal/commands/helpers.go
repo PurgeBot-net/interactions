@@ -43,13 +43,17 @@ func containerMessage(text string) discord.InteractionResponse {
 	}
 }
 
+func ephemeralContainerCreate(text string) discord.MessageCreate {
+	return discord.MessageCreate{
+		Flags:      discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral,
+		Components: []discord.LayoutComponent{discord.NewContainer(discord.NewTextDisplay(text))},
+	}
+}
+
 func ephemeralContainer(text string) discord.InteractionResponse {
 	return discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeCreateMessage,
-		Data: discord.MessageCreate{
-			Flags:      discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral,
-			Components: []discord.LayoutComponent{discord.NewContainer(discord.NewTextDisplay(text))},
-		},
+		Data: ephemeralContainerCreate(text),
 	}
 }
 
