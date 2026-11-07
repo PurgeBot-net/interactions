@@ -16,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/PurgeBot-net/common/log"
 	"github.com/PurgeBot-net/database"
 	"github.com/PurgeBot-net/interactions/config"
 	"github.com/PurgeBot-net/interactions/internal/commands"
@@ -40,6 +41,7 @@ func New(cfg config.Config, logger *zap.Logger, db *database.Database, redis *re
 	// disgo's default; stated so it cannot silently change.
 	client, err := disgo.New(cfg.Token,
 		bot.WithCacheConfigOpts(cache.WithCaches(cache.FlagsNone)),
+		bot.WithLogger(log.Slog(logger)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create discord client: %w", err)
