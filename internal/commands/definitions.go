@@ -75,6 +75,7 @@ func purgeSubcommand(name, description string, extra ...discord.ApplicationComma
 		},
 		discord.ApplicationCommandOptionBool{Name: "filter_keep", Description: "Keep what the filter matches and delete everything else"},
 		discord.ApplicationCommandOptionBool{Name: "case_sensitive", Description: "Case-sensitive filter"},
+		discord.ApplicationCommandOptionBool{Name: "flagged_media", Description: "Only delete messages with media Discord flagged as explicit, gore or self-harm"},
 		discord.ApplicationCommandOptionBool{Name: "include_threads", Description: "Include thread messages"},
 		discord.ApplicationCommandOptionBool{Name: "skip_channels", Description: "Interactively choose channels to skip (category only)"},
 		discord.ApplicationCommandOptionString{Name: "skip_messages", Description: "Message links or IDs to never delete, separated by commas or spaces"},

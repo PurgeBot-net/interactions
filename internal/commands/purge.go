@@ -97,6 +97,9 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	if cs, ok := data.OptBool("case_sensitive"); ok {
 		j.CaseSensitive = cs
 	}
+	if fm, ok := data.OptBool("flagged_media"); ok {
+		j.FlaggedMedia = fm
+	}
 	if it, ok := data.OptBool("include_threads"); ok {
 		j.IncludeThreads = it
 	}

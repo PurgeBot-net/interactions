@@ -63,7 +63,7 @@ func targetChoices(rows []targetChannel, query string, guildID snowflake.ID, exc
 			continue
 		}
 		parent := ch.ParentID
-		// Discord omits categories the bot cannot view, so a child can outlive its parent.
+		// A child whose category is missing from the list would otherwise never be offered.
 		if !known[parent] {
 			parent = 0
 		}

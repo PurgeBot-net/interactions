@@ -91,7 +91,8 @@ func (h *customizeHandler) Handle(ctx context.Context, i discord.ApplicationComm
 			Type: discord.InteractionResponseTypeModal,
 			Data: discord.NewModalCreate("customize_modal", "Customize PurgeBot",
 				discord.NewLabel("Bot name (leave blank to keep current)", nameInput),
-				discord.NewLabel("Upload a new avatar (JPG, PNG, GIF, WebP — max 8 MB)", discord.NewFileUpload("bot_avatar").WithRequired(false)),
+				discord.NewLabel("Upload a new avatar (JPG, PNG, GIF, WebP — max 8 MB)", discord.NewFileUpload("bot_avatar").WithRequired(false).
+					WithFileTypes(".png", ".jpg", ".jpeg", ".jfif", ".gif", ".webp")),
 				discord.NewLabel("Branding footer", brandingInput),
 			),
 		})

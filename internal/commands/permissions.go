@@ -99,6 +99,10 @@ func (r *Router) checkPurgePermissions(ctx context.Context, i discord.Interactio
 
 	targets := purgeTargetChannels(channels, j)
 	if len(targets) == 0 {
+		// Get Guild Channels omits channels the bot can't view; a category or thread target can be empty for other reasons.
+		if j.TargetType == job.TargetTypeServer {
+			return locale.MsgPurgeMissingPerms.In(lang, permissionLines(missingForChannel(base)|discord.PermissionViewChannel)), true
+		}
 		return "", false
 	}
 
@@ -252,6 +256,7 @@ var permissionNameTable = []struct {
 	{discord.PermissionViewChannel, "View Channel"},
 	{discord.PermissionReadMessageHistory, "Read Message History"},
 	{discord.PermissionManageMessages, "Manage Messages"},
+	{discord.PermissionConnect, "Connect"},
 	{discord.PermissionSendMessages, "Send Messages"},
 	{discord.PermissionSendMessagesInThreads, "Send Messages in Threads"},
 }
