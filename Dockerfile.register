@@ -7,7 +7,7 @@ COPY locale/       ./locale/
 COPY interactions/ ./interactions/
 
 WORKDIR /build/interactions
-RUN go mod download
+RUN go work init . ../common ../database ../locale
 RUN go build -o /register ./cmd/register/
 
 FROM alpine:latest

@@ -60,8 +60,9 @@ func New(cfg config.Config, logger *zap.Logger, db *database.Database, redis *re
 }
 
 func (s *Server) Start(ctx context.Context) error {
+	// Discord keeps the last registered set, so a failed refresh must not keep the endpoint down.
 	if err := s.router.RegisterCommands(ctx); err != nil {
-		return err
+		s.logger.Error("register slash commands", zap.Error(err))
 	}
 
 	mux := http.NewServeMux()

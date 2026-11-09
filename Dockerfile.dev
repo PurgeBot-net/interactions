@@ -7,8 +7,7 @@ COPY locale/       ./locale/
 COPY interactions/ ./interactions/
 
 WORKDIR /build/interactions
-RUN sed -i 's|// replace github.com/PurgeBot-net/|replace github.com/PurgeBot-net/|g' go.mod
-RUN go mod tidy
+RUN go work init . ../common ../database ../locale
 RUN go build -o /interactions ./cmd/
 
 FROM alpine:latest
