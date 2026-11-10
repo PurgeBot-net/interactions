@@ -116,7 +116,7 @@ func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) bool {
 }
 
 func (r *Router) handleAutocomplete(ctx context.Context, i discord.AutocompleteInteraction, respond RespondFunc) {
-	if i.Data.Focused().Name == "target_id" {
+	if i.Data.Focused().Name == "target" {
 		newPurgeHandler(r).HandleAutocomplete(ctx, i, respond)
 		return
 	}

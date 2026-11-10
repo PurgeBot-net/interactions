@@ -48,7 +48,7 @@ func purgeCommand() discord.ApplicationCommandCreate {
 func purgeSubcommand(name, description string, extra ...discord.ApplicationCommandOption) discord.ApplicationCommandOptionSubCommand {
 	required := []discord.ApplicationCommandOption{
 		discord.ApplicationCommandOptionString{
-			Name:         "target_id",
+			Name:         "target",
 			Description:  "Server, category, or channel to purge",
 			Required:     true,
 			Autocomplete: true,

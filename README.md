@@ -8,7 +8,7 @@ Discord interactions service for PurgeBot. Receives slash commands, modals, and 
 - Verifies Ed25519 signatures on every incoming request
 - Registers global slash commands on startup
 - Handles `/purge`, `/cancel`, `/help`, `/stats`, and `/customize` commands
-- Handles autocomplete for the `target_id` option on `/purge`
+- Handles autocomplete for the `target` option on `/purge`
 - Handles the `customize_modal` modal submission
 - Handles purge cancellation and channel-skip UI via `cancel:*` and `skip:*` components
 - Authorises a cancel on job ownership or server ownership, never on a permission

@@ -69,7 +69,7 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		CreatedAt:            time.Now(),
 	}
 
-	if targetStr, ok := data.OptString("target_id"); ok {
+	if targetStr, ok := data.OptString("target"); ok {
 		if kind, rawID, found := strings.Cut(targetStr, ":"); found {
 			if id, err := strconv.ParseUint(rawID, 10, 64); err == nil {
 				j.TargetID = id
