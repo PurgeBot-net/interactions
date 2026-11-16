@@ -7,7 +7,8 @@ Discord interactions service for PurgeBot. Receives slash commands, modals, and 
 - Exposes an HTTP endpoint (`POST /interactions`) that Discord delivers interactions to
 - Verifies Ed25519 signatures on every incoming request
 - Registers global slash commands on startup
-- Handles `/purge`, `/cancel`, `/help`, `/stats`, and `/customize` commands
+- Handles `/purge`, `/cancel`, `/help`, `/stats`, `/customize`, and `/settings` commands
+- Lets an administrator turn purge stats off with `/settings`, which deletes the server's recorded stats
 - Handles autocomplete for the `target` option on `/purge`
 - Handles the `customize_modal` modal submission
 - Handles purge cancellation and channel-skip UI via `cancel:*` and `skip:*` components

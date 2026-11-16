@@ -10,6 +10,7 @@ func GlobalCommands() []discord.ApplicationCommandCreate {
 		helpCommand(),
 		customizeCommand(),
 		statsCommand(),
+		settingsCommand(),
 	}
 }
 
@@ -159,6 +160,24 @@ func statsCommand() discord.ApplicationCommandCreate {
 					{Name: "Last 14 days", Value: 14},
 					{Name: "Last 30 days", Value: 30},
 					{Name: "Last 90 days", Value: 90},
+				},
+			},
+		},
+	}
+}
+
+func settingsCommand() discord.ApplicationCommandCreate {
+	return discord.SlashCommandCreate{
+		Name:        "settings",
+		Description: "Change PurgeBot's settings for this server",
+		Options: []discord.ApplicationCommandOption{
+			discord.ApplicationCommandOptionString{
+				Name:        "stats",
+				Description: "Keep purge statistics for /stats",
+				Required:    true,
+				Choices: []discord.ApplicationCommandOptionChoiceString{
+					{Name: "On", Value: "on"},
+					{Name: "Off (deletes recorded stats)", Value: "off"},
 				},
 			},
 		},

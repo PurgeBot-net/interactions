@@ -67,6 +67,8 @@ func (r *Router) handleCommand(ctx context.Context, i discord.ApplicationCommand
 		newCustomizeHandler(r).Handle(ctx, i, respond)
 	case "stats":
 		newStatsHandler(r).Handle(ctx, i, respond)
+	case "settings":
+		newSettingsHandler(r).Handle(ctx, i, respond)
 	default:
 		r.logger.Warn("unknown command", zap.String("name", i.Data.CommandName()))
 	}

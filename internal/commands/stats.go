@@ -25,6 +25,18 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		return
 	}
 
+	// Before the Premium gate, so an opted-out server is not shown an upsell for stats it turned off.
+	settings, err := h.r.db.GetGuildSettings(ctx, int64(*i.GuildID()))
+	if err != nil {
+		h.r.logger.Error("get guild settings", zap.Error(err))
+		respond(ephemeralLocale(i, locale.MsgErrorInternal))
+		return
+	}
+	if settings != nil && !settings.StatsEnabled {
+		respond(ephemeralContainer(locale.MsgStatsOptedOut.In(interactionLocale(i))))
+		return
+	}
+
 	if !h.r.hasPremium(ctx, *i.GuildID()) {
 		components := []discord.LayoutComponent{
 			discord.NewContainer(
