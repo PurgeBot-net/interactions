@@ -181,7 +181,6 @@ func (h *customizeHandler) HandleModal(ctx context.Context, i discord.ModalSubmi
 		BotName:        botName,
 		BotAvatar:      avatarBase64,
 		RemoveBranding: removeBranding,
-		UpdatedBy:      int64(i.User().ID),
 	}
 	if err := h.r.db.UpsertCustomization(ctx, p); err != nil {
 		h.r.logger.Error("upsert customization", zap.Error(err))
