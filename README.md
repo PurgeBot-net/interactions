@@ -29,6 +29,6 @@ All configuration is loaded from environment variables (see `.env.example` in th
 | `INTERACTIONS_ADDR`                        | Listen address (default `:8080`)                       |
 | `PREMIUM_SKU_ID`                           | Discord premium SKU ID (optional)                      |
 | `FREE_PREMIUM_GUILD_IDS`                   | Comma-separated guild IDs with free premium (optional) |
-| `SENTRY_DSN`                               | Sentry error reporting (optional)                      |
+| `SENTRY_DSN`                               | Sentry-compatible error reporting (optional)           |
 | `LOG_LEVEL`                                | `debug`, `info`, `warn`, `error`                       |
 | `LOG_JSON`                                 | `true` for JSON log output                             |
