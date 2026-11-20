@@ -78,7 +78,7 @@ func (h *settingsHandler) changeAccess(ctx context.Context, i discord.Applicatio
 	}
 	// Discord leaves @everyone out of a member's roles, so a grant could never match.
 	if role.ID == *i.GuildID() {
-		respond(ephemeralContainer(locale.MsgSettingsAccessEveryone.In(interactionLocale(i))))
+		respond(ephemeral(locale.MsgSettingsAccessEveryone.In(interactionLocale(i))))
 		return
 	}
 
@@ -114,7 +114,7 @@ func (h *settingsHandler) listAccess(ctx context.Context, i discord.ApplicationC
 		ids = h.dropDeletedRoles(ctx, guildID, ids)
 	}
 	if len(ids) == 0 {
-		respond(ephemeralContainer(locale.MsgSettingsAccessListEmpty.In(interactionLocale(i))))
+		respond(ephemeral(locale.MsgSettingsAccessListEmpty.In(interactionLocale(i))))
 		return
 	}
 

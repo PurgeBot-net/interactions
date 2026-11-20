@@ -116,8 +116,11 @@ func (f *followup) deliver(m discord.MessageCreate) {
 		f.r.logger.Warn("delete loading reply", zap.Error(err))
 		// A followup sent while the reply still loads becomes an edit of it, which would show m
 		// with the ack's visibility. A neutral text clears the loading state first.
-		msg := locale.MsgErrorInternal.In(interactionLocale(f.i))
-		if err = f.r.editOriginal(f.ctx, f.i, discord.MessageUpdate{Content: &msg, AllowedMentions: noPings}); err == nil {
+		neutral := discord.NewMessageUpdateV2(discord.NewContainer(
+			discord.NewTextDisplay(locale.MsgErrorInternal.In(interactionLocale(f.i))),
+		))
+		neutral.AllowedMentions = noPings
+		if err = f.r.editOriginal(f.ctx, f.i, neutral); err == nil {
 			err = f.createFollowup(m)
 		}
 	}
@@ -143,12 +146,8 @@ func (f *followup) finish() {
 	}
 }
 
-// Content must stay nil on a Components V2 message.
 func toUpdate(m discord.MessageCreate) discord.MessageUpdate {
 	u := discord.MessageUpdate{AllowedMentions: m.AllowedMentions}
-	if m.Content != "" {
-		u.Content = &m.Content
-	}
 	if len(m.Components) > 0 {
 		u.Components = &m.Components
 	}

@@ -22,36 +22,30 @@ func inviteURL(applicationID uint64) string {
 func (h *helpHandler) Handle(ctx context.Context, i discord.ApplicationCommandInteraction, respond RespondFunc) {
 	lang := interactionLocale(i)
 
+	card := []discord.ContainerSubComponent{discord.NewTextDisplay(locale.MsgHelpHeader.In(lang))}
+	for _, section := range [][2]locale.Message{
+		{locale.MsgHelpCommandsTitle, locale.MsgHelpCommandsBody},
+		{locale.MsgHelpParametersTitle, locale.MsgHelpParametersBody},
+		{locale.MsgHelpFilteringTitle, locale.MsgHelpFilteringBody},
+		{locale.MsgHelpPermissionsTitle, locale.MsgHelpPermissionsBody},
+	} {
+		card = append(card,
+			discord.NewSmallSeparator(),
+			discord.NewTextDisplay(section[0].In(lang)+"\n"+section[1].In(lang)),
+		)
+	}
+
 	components := []discord.LayoutComponent{
-		discord.NewTextDisplay(locale.MsgHelpHeader.In(lang)),
-		discord.NewSmallSeparator(),
-		discord.NewContainer(
-			discord.NewTextDisplay(locale.MsgHelpCommandsTitle.In(lang)),
-			discord.NewTextDisplay(locale.MsgHelpCommandsBody.In(lang)),
-		),
-		discord.NewContainer(
-			discord.NewTextDisplay(locale.MsgHelpParametersTitle.In(lang)),
-			discord.NewTextDisplay(locale.MsgHelpParametersBody.In(lang)),
-		),
-		discord.NewContainer(
-			discord.NewTextDisplay(locale.MsgHelpFilteringTitle.In(lang)),
-			discord.NewTextDisplay(locale.MsgHelpFilteringBody.In(lang)),
-		),
-		discord.NewContainer(
-			discord.NewTextDisplay(locale.MsgHelpPermissionsTitle.In(lang)),
-			discord.NewTextDisplay(locale.MsgHelpPermissionsBody.In(lang)),
-		),
+		discord.NewContainer(card...),
 		discord.ActionRowComponent{Components: []discord.InteractiveComponent{
 			discord.ButtonComponent{
 				Style: discord.ButtonStyleLink,
 				Label: locale.MsgHelpButtonInvite.In(lang),
-				Emoji: &discord.ComponentEmoji{Name: "🔗"},
 				URL:   inviteURL(h.r.cfg.ApplicationID),
 			},
 			discord.ButtonComponent{
 				Style: discord.ButtonStyleLink,
 				Label: locale.MsgHelpButtonSupport.In(lang),
-				Emoji: &discord.ComponentEmoji{Name: "❓"},
 				URL:   "https://support.purgebot.net",
 			},
 		}},
@@ -64,9 +58,7 @@ func (h *helpHandler) Handle(ctx context.Context, i discord.ApplicationCommandIn
 		}
 	}
 	if showBranding {
-		components = append(components, discord.NewContainer(
-			discord.NewTextDisplay("-# Powered by PurgeBot"),
-		))
+		components = append(components, discord.NewTextDisplay("-# Powered by PurgeBot"))
 	}
 
 	respond(discord.InteractionResponse{

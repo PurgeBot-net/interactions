@@ -107,7 +107,7 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	if refs, ok := data.OptString("skip_messages"); ok {
 		ids, bad := parseMessageRefs(refs)
 		if bad != "" {
-			respond(ephemeral(locale.MsgPurgeInvalidMessageRef.In(lang, bad)))
+			respond(ephemeral(locale.MsgPurgeInvalidMessageRef.In(lang, truncate(bad, 100))))
 			return
 		}
 		j.SkipMessageIDs = ids
@@ -146,7 +146,7 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	}
 
 	if refusal, blocked := h.r.checkPurgePermissions(ctx, i, j, lang); blocked {
-		respond(ephemeralContainer(refusal))
+		respond(ephemeral(locale.MsgPurgeNotStarted.In(lang, refusal)))
 		return
 	}
 
@@ -221,7 +221,7 @@ func (h *purgeHandler) handleSkipChannelsUI(ctx context.Context, i discord.Appli
 			continue
 		}
 		options = append(options, discord.StringSelectMenuOption{
-			Label: channelPrefix(ch.Type()) + ch.Name(),
+			Label: choiceName(channelPrefix(ch.Type()), ch.Name()),
 			Value: ch.ID().String(),
 		})
 	}
@@ -288,6 +288,14 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 	}
 
 	lang := interactionLocale(i)
+	notStarted := func(reason locale.Message) discord.InteractionResponse {
+		return discord.InteractionResponse{
+			Type: discord.InteractionResponseTypeUpdateMessage,
+			Data: discord.NewMessageUpdateV2(discord.NewContainer(
+				discord.NewTextDisplay(locale.MsgPurgeNotStarted.In(lang, reason.In(lang))),
+			)),
+		}
+	}
 
 	switch action {
 	case "select":
@@ -312,21 +320,11 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 		j, err := job.GetPendingJob(ctx, h.r.redis, guildID)
 		if err != nil {
 			h.r.logger.Error("get pending job", zap.Error(err))
-			respond(discord.InteractionResponse{
-				Type: discord.InteractionResponseTypeUpdateMessage,
-				Data: discord.NewMessageUpdateV2(discord.NewContainer(
-					discord.NewTextDisplay(locale.MsgErrorInternal.In(lang)),
-				)),
-			})
+			respond(notStarted(locale.MsgErrorInternal))
 			return
 		}
 		if j == nil {
-			respond(discord.InteractionResponse{
-				Type: discord.InteractionResponseTypeUpdateMessage,
-				Data: discord.NewMessageUpdateV2(discord.NewContainer(
-					discord.NewTextDisplay(locale.MsgSkipChannelsExpired.In(lang)),
-				)),
-			})
+			respond(notStarted(locale.MsgSkipChannelsExpired))
 			return
 		}
 
@@ -344,7 +342,7 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 			respond(discord.InteractionResponse{
 				Type: discord.InteractionResponseTypeUpdateMessage,
 				Data: discord.NewMessageUpdateV2(discord.NewContainer(
-					discord.NewTextDisplay(refusal),
+					discord.NewTextDisplay(locale.MsgPurgeNotStarted.In(lang, refusal)),
 				)),
 			})
 			return
@@ -353,21 +351,11 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 		active, err := job.SetActiveJob(ctx, h.r.redis, j)
 		if err != nil {
 			h.r.logger.Error("set active job (skip continue)", zap.Error(err))
-			respond(discord.InteractionResponse{
-				Type: discord.InteractionResponseTypeUpdateMessage,
-				Data: discord.NewMessageUpdateV2(discord.NewContainer(
-					discord.NewTextDisplay(locale.MsgErrorInternal.In(lang)),
-				)),
-			})
+			respond(notStarted(locale.MsgErrorInternal))
 			return
 		}
 		if !active {
-			respond(discord.InteractionResponse{
-				Type: discord.InteractionResponseTypeUpdateMessage,
-				Data: discord.NewMessageUpdateV2(discord.NewContainer(
-					discord.NewTextDisplay(locale.MsgPurgeAlreadyRunning.In(lang)),
-				)),
-			})
+			respond(notStarted(locale.MsgPurgeAlreadyRunning))
 			return
 		}
 
@@ -377,7 +365,10 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 			discord.NewTextDisplay(locale.MsgPurgeStatusStarting.In(lang)),
 		}
 		if gap := missingStatusSurfacePerms(i.AppPermissions(), i.Channel().Type(), true); gap != 0 {
-			texts = append(texts, discord.NewTextDisplay(locale.MsgPurgeNoStatusMessage.In(lang, permissionNames(gap))))
+			texts = append(texts,
+				discord.NewSmallSeparator(),
+				discord.NewTextDisplay(locale.MsgPurgeNoStatusMessage.In(lang, permissionNames(gap))),
+			)
 			h.r.logger.Info("status surface degraded in invoking channel",
 				zap.String("guild_id", guildIDStr),
 				zap.String("channel_id", i.Channel().ID().String()),
@@ -396,7 +387,7 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 				snowflake.ID(j.ApplicationID),
 				j.InteractionToken,
 				discord.NewMessageUpdateV2(discord.NewContainer(
-					discord.NewTextDisplay(locale.MsgErrorInternalStart.In(lang)),
+					discord.NewTextDisplay(locale.MsgPurgeNotStarted.In(lang, locale.MsgErrorInternal.In(lang))),
 				)),
 			)
 		}
@@ -425,27 +416,27 @@ func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommand
 		Data: discord.NewMessageCreate(),
 	})
 
+	notStarted := func(reason locale.Message) {
+		h.r.editOriginal(ctx, i, discord.NewMessageUpdateV2(discord.NewContainer( //nolint:errcheck
+			discord.NewTextDisplay(locale.MsgPurgeNotStarted.In(lang, reason.In(lang))),
+		)))
+	}
+
 	active, err := job.SetActiveJob(ctx, h.r.redis, j)
 	if err != nil {
 		h.r.logger.Error("set active job", zap.Error(err))
-		h.r.editOriginal(ctx, i, discord.NewMessageUpdateV2(discord.NewContainer( //nolint:errcheck
-			discord.NewTextDisplay(locale.MsgErrorInternal.In(lang)),
-		)))
+		notStarted(locale.MsgErrorInternal)
 		return false
 	}
 	if !active {
-		h.r.editOriginal(ctx, i, discord.NewMessageUpdateV2(discord.NewContainer( //nolint:errcheck
-			discord.NewTextDisplay(locale.MsgPurgeAlreadyRunning.In(lang)),
-		)))
+		notStarted(locale.MsgPurgeAlreadyRunning)
 		return false
 	}
 
 	if err := job.Enqueue(ctx, h.r.redis, j); err != nil {
 		h.r.logger.Error("enqueue purge job", zap.Error(err))
 		job.DeleteActiveJob(ctx, h.r.redis, j.GuildID)
-		h.r.editOriginal(ctx, i, discord.NewMessageUpdateV2(discord.NewContainer( //nolint:errcheck
-			discord.NewTextDisplay(locale.MsgErrorInternalStart.In(lang)),
-		)))
+		notStarted(locale.MsgErrorInternal)
 		return false
 	}
 	return true

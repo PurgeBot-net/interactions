@@ -107,9 +107,9 @@ func (r *Router) passGate(ctx context.Context, i discord.Interaction, g gate, re
 		r.logger.Error("check access", zap.Error(err), zap.String("guild_id", i.GuildID().String()))
 		respond(ephemeralLocale(i, locale.MsgErrorInternal))
 	case g == gateOwner:
-		respond(ephemeralContainer(locale.MsgSettingsAccessOwnerOnly.In(interactionLocale(i))))
+		respond(ephemeral(locale.MsgSettingsAccessOwnerOnly.In(interactionLocale(i))))
 	default:
-		respond(ephemeralContainer(locale.MsgErrorNoAccess.In(interactionLocale(i))))
+		respond(ephemeral(locale.MsgErrorNoAccess.In(interactionLocale(i))))
 	}
 	return ok
 }

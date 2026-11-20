@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/snowflake/v2"
@@ -203,9 +202,5 @@ func sidebarRank(t discord.ChannelType) int {
 // One name over 100 characters makes Discord reject the whole response, and the bot never learns
 // of it: the choices are the body of its own reply, so the 400 reaches the user as an empty list.
 func choiceName(prefix, name string) string {
-	full := prefix + name
-	if utf8.RuneCountInString(full) <= maxChoiceName {
-		return full
-	}
-	return string([]rune(full)[:maxChoiceName-1]) + "…"
+	return truncate(prefix+name, maxChoiceName)
 }

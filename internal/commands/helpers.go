@@ -2,6 +2,7 @@ package commands
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/disgoorg/disgo/discord"
 
@@ -20,16 +21,13 @@ func ephemeralLocale(i discord.Interaction, key locale.Message) discord.Interact
 }
 
 func publicLocale(i discord.Interaction, key locale.Message) discord.InteractionResponse {
-	return discord.InteractionResponse{
-		Type: discord.InteractionResponseTypeCreateMessage,
-		Data: discord.NewMessageCreate().WithContent(key.In(interactionLocale(i))),
-	}
+	return containerMessage(key.In(interactionLocale(i)))
 }
 
-func ephemeral(msg string) discord.InteractionResponse {
+func ephemeral(text string) discord.InteractionResponse {
 	return discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeCreateMessage,
-		Data: discord.NewMessageCreate().WithContent(msg).WithFlags(discord.MessageFlagEphemeral),
+		Data: ephemeralContainerCreate(text),
 	}
 }
 
@@ -50,11 +48,12 @@ func ephemeralContainerCreate(text string) discord.MessageCreate {
 	}
 }
 
-func ephemeralContainer(text string) discord.InteractionResponse {
-	return discord.InteractionResponse{
-		Type: discord.InteractionResponseTypeCreateMessage,
-		Data: ephemeralContainerCreate(text),
+// Echoed input and channel names have no length cap of their own, and Discord refuses the whole message.
+func truncate(s string, max int) string {
+	if utf8.RuneCountInString(s) <= max {
+		return s
 	}
+	return string([]rune(s)[:max-1]) + "…"
 }
 
 func matches(name, query string) bool {

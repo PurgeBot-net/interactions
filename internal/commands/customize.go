@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"encoding/base64"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -117,8 +116,9 @@ func (h *customizeHandler) HandleEdit(ctx context.Context, i discord.Application
 		Type: discord.InteractionResponseTypeModal,
 		Data: discord.NewModalCreate("customize_modal", "Customize PurgeBot",
 			discord.NewLabel("Bot name (leave blank to keep current)", nameInput),
-			discord.NewLabel("Upload a new avatar (JPG, PNG, GIF, WebP — max 8 MB)", discord.NewFileUpload("bot_avatar").WithRequired(false).
-				WithFileTypes(".png", ".jpg", ".jpeg", ".jfif", ".gif", ".webp")),
+			discord.NewLabel("Upload a new avatar", discord.NewFileUpload("bot_avatar").WithRequired(false).
+				WithFileTypes(".png", ".jpg", ".jpeg", ".jfif", ".gif", ".webp")).
+				WithDescription("JPG, PNG, GIF or WebP, max 8 MB"),
 			discord.NewLabel("Branding footer", brandingInput),
 		),
 	})
@@ -200,11 +200,11 @@ func (h *customizeHandler) HandleModal(ctx context.Context, i discord.ModalSubmi
 		}
 		valid := ct == "image/jpeg" || ct == "image/jpg" || ct == "image/png" || ct == "image/gif" || ct == "image/webp"
 		if !valid {
-			respond(ephemeral(fmt.Sprintf("Invalid avatar type: `%s`. Allowed: JPG, PNG, GIF, WebP.", ct)))
+			respond(ephemeral(locale.MsgCustomizeAvatarInvalidType.In(interactionLocale(i), ct)))
 			return
 		}
 		if att.Size > 8*1024*1024 {
-			respond(ephemeral("Avatar exceeds the 8 MB size limit."))
+			respond(ephemeralLocale(i, locale.MsgCustomizeAvatarTooLarge))
 			return
 		}
 		icon, b64, dlErr := h.downloadAvatar(ctx, att.URL)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/snowflake/v2"
@@ -33,7 +34,7 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		return
 	}
 	if settings != nil && !settings.StatsEnabled {
-		respond(ephemeralContainer(locale.MsgStatsOptedOut.In(interactionLocale(i))))
+		respond(ephemeral(locale.MsgStatsOptedOut.In(interactionLocale(i))))
 		return
 	}
 
@@ -97,28 +98,24 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		return
 	}
 
-	texts := []discord.ContainerSubComponent{
-		discord.NewTextDisplay(locale.MsgStatsHeader.In(lang)),
-	}
+	lines := []string{locale.MsgStatsHeader.In(lang)}
 
 	if stats.TotalPurges == 0 {
-		texts = append(texts, discord.NewTextDisplay(locale.MsgStatsNoPurges.In(lang)))
+		lines = append(lines, locale.MsgStatsNoPurges.In(lang))
 		flags := discord.MessageFlagIsComponentsV2
 		_ = h.r.editOriginal(ctx, i, discord.MessageUpdate{
-			Components: &[]discord.LayoutComponent{discord.NewContainer(texts...)},
+			Components: &[]discord.LayoutComponent{discord.NewContainer(discord.NewTextDisplay(strings.Join(lines, "\n")))},
 			Flags:      &flags,
 		})
 		return
 	}
 
-	texts = append(texts,
-		discord.NewTextDisplay(locale.MsgStatsTotals.In(lang, stats.TotalPurges, stats.TotalDeleted)),
-	)
+	lines = append(lines, locale.MsgStatsTotals.In(lang, stats.TotalPurges, stats.TotalDeleted))
 	if stats.LastPurgeAt != nil {
-		texts = append(texts, discord.NewTextDisplay(locale.MsgStatsLastPurge.In(lang, fmt.Sprintf("<t:%d:R>", stats.LastPurgeAt.Unix()))))
+		lines = append(lines, locale.MsgStatsLastPurge.In(lang, fmt.Sprintf("<t:%d:R>", stats.LastPurgeAt.Unix())))
 	}
 
-	components := []discord.LayoutComponent{discord.NewContainer(texts...)}
+	card := []discord.ContainerSubComponent{discord.NewTextDisplay(strings.Join(lines, "\n"))}
 	var files []*discord.File
 
 	if stats.TotalDeleted > 0 {
@@ -126,7 +123,7 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		if chartErr != nil {
 			h.r.logger.Warn("generate stats chart", zap.Error(chartErr))
 		} else {
-			components = append(components, discord.NewMediaGallery(
+			card = append(card, discord.NewMediaGallery(
 				discord.MediaGalleryItem{
 					Media: discord.UnfurledMediaItem{URL: "attachment://stats.png"},
 				},
@@ -135,6 +132,7 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		}
 	}
 
+	components := []discord.LayoutComponent{discord.NewContainer(card...)}
 	flags := discord.MessageFlagIsComponentsV2
 	if err := h.r.editOriginal(ctx, i, discord.MessageUpdate{
 		Components: &components,
