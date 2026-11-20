@@ -2,6 +2,11 @@ package commands
 
 import "github.com/disgoorg/disgo/discord"
 
+var (
+	guildOnly  = []discord.InteractionContextType{discord.InteractionContextTypeGuild}
+	everywhere = []discord.InteractionContextType{discord.InteractionContextTypeGuild, discord.InteractionContextTypeBotDM, discord.InteractionContextTypePrivateChannel}
+)
+
 // GlobalCommands returns all commands registered globally.
 func GlobalCommands() []discord.ApplicationCommandCreate {
 	return []discord.ApplicationCommandCreate{
@@ -18,6 +23,7 @@ func purgeCommand() discord.ApplicationCommandCreate {
 	return discord.SlashCommandCreate{
 		Name:        "purge",
 		Description: "Delete messages in bulk",
+		Contexts:    guildOnly,
 		Options: []discord.ApplicationCommandOption{
 			purgeSubcommand("user", "Delete messages from a specific user",
 				discord.ApplicationCommandOptionUser{Name: "user", Description: "Target user", Required: true},
@@ -120,6 +126,7 @@ func cancelCommand() discord.ApplicationCommandCreate {
 	return discord.SlashCommandCreate{
 		Name:        "cancel",
 		Description: "Cancel a running purge",
+		Contexts:    guildOnly,
 	}
 }
 
@@ -127,6 +134,7 @@ func helpCommand() discord.ApplicationCommandCreate {
 	return discord.SlashCommandCreate{
 		Name:        "help",
 		Description: "Show bot info and command documentation",
+		Contexts:    everywhere,
 	}
 }
 
@@ -134,6 +142,7 @@ func customizeCommand() discord.ApplicationCommandCreate {
 	return discord.SlashCommandCreate{
 		Name:        "customize",
 		Description: "Customize the bot appearance for this server (Premium)",
+		Contexts:    guildOnly,
 		Options: []discord.ApplicationCommandOption{
 			discord.ApplicationCommandOptionSubCommand{
 				Name:        "edit",
@@ -151,6 +160,7 @@ func statsCommand() discord.ApplicationCommandCreate {
 	return discord.SlashCommandCreate{
 		Name:        "stats",
 		Description: "View purge statistics for this server (Premium)",
+		Contexts:    guildOnly,
 		Options: []discord.ApplicationCommandOption{
 			discord.ApplicationCommandOptionInt{
 				Name:        "days",
@@ -170,6 +180,7 @@ func settingsCommand() discord.ApplicationCommandCreate {
 	return discord.SlashCommandCreate{
 		Name:        "settings",
 		Description: "Change PurgeBot's settings for this server",
+		Contexts:    guildOnly,
 		Options: []discord.ApplicationCommandOption{
 			discord.ApplicationCommandOptionSubCommand{
 				Name:        "stats",
