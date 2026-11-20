@@ -258,7 +258,7 @@ func (h *customizeHandler) downloadAvatar(ctx context.Context, url string) (*dis
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {

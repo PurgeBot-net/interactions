@@ -558,11 +558,10 @@ func messageIDFromRef(ref string) (uint64, bool) {
 	}
 	// Any host Discord serves links from: discord.com, ptb./canary. subdomains and
 	// the legacy discordapp.com all share the /channels/guild/channel/message tail.
-	i := strings.Index(ref, "/channels/")
-	if i < 0 {
+	_, tail, found := strings.Cut(ref, "/channels/")
+	if !found {
 		return 0, false
 	}
-	tail := ref[i+len("/channels/"):]
 	tail, _, _ = strings.Cut(tail, "?")
 	tail, _, _ = strings.Cut(tail, "#")
 	parts := strings.Split(strings.Trim(tail, "/"), "/")

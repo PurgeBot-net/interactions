@@ -161,10 +161,7 @@ func generateStatsChart(data []database.DailyPurgeStat, days int, monthly bool) 
 	} else {
 		title = fmt.Sprintf("Messages Deleted — Last %d Days", days)
 		labelFmt = "Jan 2"
-		labelInterval = days / 7
-		if labelInterval < 1 {
-			labelInterval = 1
-		}
+		labelInterval = max(days/7, 1)
 	}
 
 	bars := make([]chart.Value, len(data))
@@ -187,13 +184,7 @@ func generateStatsChart(data []database.DailyPurgeStat, days int, monthly bool) 
 	if !monthly && days > 30 {
 		width = 1000
 	}
-	barWidth := width/len(bars) - 4
-	if barWidth < 4 {
-		barWidth = 4
-	}
-	if barWidth > 40 {
-		barWidth = 40
-	}
+	barWidth := min(max(width/len(bars)-4, 4), 40)
 
 	bc := chart.BarChart{
 		Title:      title,

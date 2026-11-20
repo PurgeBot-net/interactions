@@ -65,8 +65,8 @@ func purgeSubcommand(name, description string, extra ...discord.ApplicationComma
 		discord.ApplicationCommandOptionInt{
 			Name:        "days",
 			Description: "Only delete messages from the last X days (1–30)",
-			MinValue:    ptr(1),
-			MaxValue:    ptr(30),
+			MinValue:    new(1),
+			MaxValue:    new(30),
 		},
 		discord.ApplicationCommandOptionString{Name: "filter", Description: "Text or regex pattern to match text or attachments"},
 		discord.ApplicationCommandOptionString{
@@ -224,5 +224,3 @@ func settingsCommand() discord.ApplicationCommandCreate {
 		},
 	}
 }
-
-func ptr[T any](v T) *T { return &v }

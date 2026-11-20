@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -97,10 +98,8 @@ const premiumCacheTTL = 2 * time.Minute
 
 // A failed lookup is an error, never a "no": the upsell would tell a paying guild to buy Premium.
 func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) (bool, error) {
-	for _, id := range r.cfg.FreePremiumGuildIDs {
-		if id == uint64(guildID) {
-			return true, nil
-		}
+	if slices.Contains(r.cfg.FreePremiumGuildIDs, uint64(guildID)) {
+		return true, nil
 	}
 	if r.cfg.PremiumSKUID == "" {
 		return false, nil

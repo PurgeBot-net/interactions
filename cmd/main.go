@@ -27,7 +27,7 @@ func main() {
 		panic("create logger: " + err.Error())
 	}
 	logger = log.WithSentry(logger, cfg.SentryDSN)
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -42,7 +42,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("connect redis", zap.Error(err))
 	}
-	defer redis.Close()
+	defer func() { _ = redis.Close() }()
 
 	srv, err := server.New(cfg, logger, db, redis)
 	if err != nil {
