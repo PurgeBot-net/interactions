@@ -140,6 +140,8 @@ func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) (bool, er
 
 func (r *Router) handleAutocomplete(ctx context.Context, i discord.AutocompleteInteraction, respond RespondFunc) {
 	if i.Data.Focused().Name == "target" {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
 		if ok, err := r.checkAccess(ctx, i, commandGate(i.Data.CommandPath())); !ok {
 			if err != nil {
 				r.logger.Warn("check access for autocomplete", zap.Error(err))
@@ -150,10 +152,7 @@ func (r *Router) handleAutocomplete(ctx context.Context, i discord.AutocompleteI
 		newPurgeHandler(r).HandleAutocomplete(ctx, i, respond)
 		return
 	}
-	respond(discord.InteractionResponse{
-		Type: discord.InteractionResponseTypeAutocompleteResult,
-		Data: discord.AutocompleteResult{},
-	})
+	respond(autocompleteResult(nil))
 }
 
 func (r *Router) handleModal(ctx context.Context, i discord.ModalSubmitInteraction, respond RespondFunc) {
@@ -173,5 +172,7 @@ func (r *Router) handleComponent(ctx context.Context, i discord.ComponentInterac
 		newPurgeHandler(r).HandleCancel(ctx, i, respond)
 	case strings.HasPrefix(id, "skip:"):
 		newPurgeHandler(r).HandleSkip(ctx, i, respond)
+	default:
+		respond(discord.InteractionResponse{Type: discord.InteractionResponseTypeDeferredUpdateMessage})
 	}
 }

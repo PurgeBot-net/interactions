@@ -66,9 +66,12 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 
 	if targetStr, ok := data.OptString("target"); ok {
 		if kind, rawID, found := strings.Cut(targetStr, ":"); found {
-			if id, err := strconv.ParseUint(rawID, 10, 64); err == nil {
-				j.TargetID = id
-				j.TargetType = job.TargetType(kind)
+			switch t := job.TargetType(kind); t {
+			case job.TargetTypeServer, job.TargetTypeCategory, job.TargetTypeChannel:
+				if id, err := strconv.ParseUint(rawID, 10, 64); err == nil {
+					j.TargetID = id
+					j.TargetType = t
+				}
 			}
 		}
 	}
@@ -139,6 +142,11 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		}
 	}
 
+	if !h.r.targetInGuild(ctx, j) {
+		respond(ephemeralLocale(i, locale.MsgPurgeInvalidTarget))
+		return
+	}
+
 	// Interactive channel-skip flow (category targets only).
 	if opensSkipUI(data) {
 		h.handleSkipChannelsUI(ctx, i, j, respond)
@@ -157,6 +165,27 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	if gap := missingStatusSurfacePerms(i.AppPermissions(), i.Channel().Type(), false); gap != 0 {
 		h.r.warnStatusSurface(context.WithoutCancel(ctx), j, lang, uint64(i.Channel().ID()), gap)
 	}
+}
+
+func (r *Router) targetInGuild(ctx context.Context, j *job.PurgeJob) bool {
+	if j.TargetType == job.TargetTypeServer {
+		return true
+	}
+	lookupCtx, cancel := context.WithTimeout(ctx, purgeGateTimeout)
+	defer cancel()
+	ch, err := r.client.Rest.GetChannel(snowflake.ID(j.TargetID), rest.WithCtx(lookupCtx))
+	if err != nil {
+		r.logger.Warn("look up purge target", zap.Error(err), zap.Uint64("target_id", j.TargetID))
+		return true
+	}
+	gc, ok := ch.(discord.GuildChannel)
+	if !ok || uint64(gc.GuildID()) != j.GuildID {
+		return false
+	}
+	if j.TargetType == job.TargetTypeCategory {
+		return gc.Type() == discord.ChannelTypeGuildCategory
+	}
+	return isPurgeableChannel(gc.Type())
 }
 
 // Runs detached because it waits up to followupAttempts x followupRetryDelay for the purger's first edit.
@@ -234,6 +263,7 @@ func (h *purgeHandler) handleSkipChannelsUI(ctx context.Context, i discord.Appli
 		options = options[:25]
 	}
 
+	job.DeletePendingJob(ctx, h.r.redis, j.GuildID)
 	if err := job.StorePendingJob(ctx, h.r.redis, j); err != nil {
 		h.r.logger.Error("store pending job", zap.Error(err))
 		respond(ephemeralLocale(i, locale.MsgErrorInternal))
@@ -275,15 +305,19 @@ func (h *purgeHandler) handleSkipChannelsUI(ctx context.Context, i discord.Appli
 
 // HandleSkip handles the skip:select / skip:continue / skip:cancel component interactions.
 func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentInteraction, respond RespondFunc) {
+	ack := discord.InteractionResponse{Type: discord.InteractionResponseTypeDeferredUpdateMessage}
+
 	// Custom ID format: "skip:{action}:{guildID}"
 	parts := strings.SplitN(i.Data.CustomID(), ":", 3)
 	if len(parts) < 3 {
+		respond(ack)
 		return
 	}
 	action, guildIDStr := parts[1], parts[2]
 
 	guildID, err := strconv.ParseUint(guildIDStr, 10, 64)
 	if err != nil {
+		respond(ack)
 		return
 	}
 
@@ -324,6 +358,10 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 			return
 		}
 		if j == nil {
+			if active, _ := job.GetActiveJob(ctx, h.r.redis, guildID); active != nil && active.RequestedByID == uint64(i.User().ID) {
+				respond(ack)
+				return
+			}
 			respond(notStarted(locale.MsgSkipChannelsExpired))
 			return
 		}
@@ -405,6 +443,9 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 				discord.NewTextDisplay(locale.MsgPurgeCancelledHeader.In(lang)),
 			)),
 		})
+
+	default:
+		respond(ack)
 	}
 }
 

@@ -84,6 +84,9 @@ func channelPrefix(t discord.ChannelType) string {
 }
 
 func autocompleteResult(choices []discord.AutocompleteChoice) discord.InteractionResponse {
+	if choices == nil {
+		choices = []discord.AutocompleteChoice{}
+	}
 	return discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeAutocompleteResult,
 		Data: discord.AutocompleteResult{Choices: choices},
