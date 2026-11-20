@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/disgoorg/disgo/bot"
@@ -20,11 +21,12 @@ import (
 type RespondFunc func(discord.InteractionResponse)
 
 type Router struct {
-	cfg    config.Config
-	logger *zap.Logger
-	db     *database.Database
-	redis  *redis.Client
-	client *bot.Client
+	cfg      config.Config
+	logger   *zap.Logger
+	db       *database.Database
+	redis    *redis.Client
+	client   *bot.Client
+	inflight sync.WaitGroup
 }
 
 func NewRouter(cfg config.Config, logger *zap.Logger, db *database.Database, redis *redis.Client, client *bot.Client) *Router {
@@ -45,22 +47,31 @@ func (r *Router) RegisterCommands(_ context.Context) error {
 func (r *Router) Handle(ctx context.Context, interaction discord.Interaction, respond RespondFunc) {
 	switch i := interaction.(type) {
 	case discord.ApplicationCommandInteraction:
-		r.handleCommand(ctx, i, respond)
+		// Opens a modal, which Discord accepts only as the first response. Gates itself.
+		if commandPath(i) == "/customize/edit" {
+			newCustomizeHandler(r).HandleEdit(ctx, i, respond)
+			return
+		}
+		r.deferred(ctx, i, respond, deferEphemeral(i), func(ctx context.Context, respond RespondFunc) {
+			r.handleCommand(ctx, i, respond)
+		})
 	case discord.AutocompleteInteraction:
 		r.handleAutocomplete(ctx, i, respond)
 	case discord.ModalSubmitInteraction:
-		r.handleModal(ctx, i, respond)
+		r.deferred(ctx, i, respond, false, func(ctx context.Context, respond RespondFunc) {
+			r.handleModal(ctx, i, respond)
+		})
 	case discord.ComponentInteraction:
+		// Not deferred: already bounded under 3s, and an early ack lets a second skip:continue
+		// click overwrite "Starting" with "expired".
 		r.handleComponent(ctx, i, respond)
 	}
 }
 
+func (r *Router) Wait() { r.inflight.Wait() }
+
 func (r *Router) handleCommand(ctx context.Context, i discord.ApplicationCommandInteraction, respond RespondFunc) {
-	path := "/" + i.Data.CommandName()
-	if d, ok := i.Data.(discord.SlashCommandInteractionData); ok {
-		path = d.CommandPath()
-	}
-	if !r.passGate(ctx, i, commandGate(path), respond) {
+	if !r.passGate(ctx, i, commandGate(commandPath(i)), respond) {
 		return
 	}
 
@@ -84,24 +95,25 @@ func (r *Router) handleCommand(ctx context.Context, i discord.ApplicationCommand
 
 const premiumCacheTTL = 2 * time.Minute
 
-func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) bool {
+// A failed lookup is an error, never a "no": the upsell would tell a paying guild to buy Premium.
+func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) (bool, error) {
 	for _, id := range r.cfg.FreePremiumGuildIDs {
 		if id == uint64(guildID) {
-			return true
+			return true, nil
 		}
 	}
 	if r.cfg.PremiumSKUID == "" {
-		return false
+		return false, nil
 	}
 
 	cacheKey := fmt.Sprintf("purgebot:premium:%d", guildID)
 	if val, err := r.redis.Get(ctx, cacheKey).Result(); err == nil {
-		return val == "1"
+		return val == "1", nil
 	}
 
 	skuID, err := snowflake.Parse(r.cfg.PremiumSKUID)
 	if err != nil {
-		return false
+		return false, nil
 	}
 	entitlements, err := r.client.Rest.GetEntitlements(
 		snowflake.ID(r.cfg.ApplicationID),
@@ -110,10 +122,11 @@ func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) bool {
 			SkuIDs:       []snowflake.ID{skuID},
 			ExcludeEnded: true,
 		},
+		rest.WithCtx(ctx),
 	)
 	if err != nil {
 		r.logger.Warn("check entitlements", zap.Error(err))
-		return false
+		return false, err
 	}
 
 	result := len(entitlements) > 0
@@ -122,7 +135,7 @@ func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) bool {
 		cacheVal = "1"
 	}
 	r.redis.Set(ctx, cacheKey, cacheVal, premiumCacheTTL) //nolint:errcheck
-	return result
+	return result, nil
 }
 
 func (r *Router) handleAutocomplete(ctx context.Context, i discord.AutocompleteInteraction, respond RespondFunc) {

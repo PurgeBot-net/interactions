@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	// Three calls share this, inside Discord's 3s window.
+	// Three calls share this. Autocomplete reuses it and must answer inside Discord's 3s window.
 	purgeGateTimeout = 1200 * time.Millisecond
 
 	// The set a channel must grant to be purgeable at all. Deliberately narrower than the

@@ -21,78 +21,126 @@ type customizeHandler struct{ r *Router }
 
 func newCustomizeHandler(r *Router) *customizeHandler { return &customizeHandler{r} }
 
+func (h *customizeHandler) noPremium(i discord.Interaction) discord.InteractionResponse {
+	components := []discord.LayoutComponent{
+		discord.NewContainer(
+			discord.NewTextDisplay(locale.MsgCustomizeNoPremium.In(interactionLocale(i))),
+		),
+	}
+	if h.r.cfg.PremiumSKUID != "" {
+		if skuID, err := snowflake.Parse(h.r.cfg.PremiumSKUID); err == nil {
+			components = append(components, discord.ActionRowComponent{
+				Components: []discord.InteractiveComponent{
+					discord.NewPremiumButton(skuID),
+				},
+			})
+		}
+	}
+	return discord.InteractionResponse{
+		Type: discord.InteractionResponseTypeCreateMessage,
+		Data: discord.MessageCreate{
+			Flags:      discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral,
+			Components: components,
+		},
+	}
+}
+
+// A modal must be the first response, so the lookups run alongside the access gate, not after it.
+func (h *customizeHandler) HandleEdit(ctx context.Context, i discord.ApplicationCommandInteraction, respond RespondFunc) {
+	if i.GuildID() == nil {
+		respond(ephemeralLocale(i, locale.MsgErrorGuildOnly))
+		return
+	}
+	guildID := *i.GuildID()
+
+	lookupCtx, cancel := context.WithTimeout(ctx, guildOwnerLookupTimeout)
+	defer cancel()
+	type premiumLookup struct {
+		ok  bool
+		err error
+	}
+	premium := make(chan premiumLookup, 1)
+	go func() {
+		ok, err := h.r.hasPremium(lookupCtx, guildID)
+		premium <- premiumLookup{ok, err}
+	}()
+	type lookup struct {
+		c   *database.Customization
+		err error
+	}
+	stored := make(chan lookup, 1)
+	go func() {
+		c, err := h.r.db.GetCustomization(lookupCtx, int64(guildID))
+		stored <- lookup{c, err}
+	}()
+
+	if !h.r.passGate(ctx, i, commandGate(commandPath(i)), respond) {
+		return
+	}
+	if p := <-premium; p.err != nil {
+		respond(ephemeralLocale(i, locale.MsgErrorInternal))
+		return
+	} else if !p.ok {
+		respond(h.noPremium(i))
+		return
+	}
+	res := <-stored
+	if res.err != nil {
+		h.r.logger.Error("get customization", zap.Error(res.err))
+		respond(ephemeralLocale(i, locale.MsgErrorInternal))
+		return
+	}
+	existing := res.c
+
+	nameInput := discord.NewShortTextInput("bot_name").
+		WithPlaceholder("PurgeBot").
+		WithMaxLength(32).
+		WithRequired(false)
+	if existing != nil && existing.BotName != nil {
+		nameInput = nameInput.WithValue(*existing.BotName)
+	}
+
+	removeBranding := existing != nil && existing.RemoveBranding
+	brandingInput := discord.RadioGroupComponent{
+		CustomID: "remove_branding",
+		Options: []discord.RadioGroupOption{
+			discord.NewRadioGroupOption("no", "Keep branding").
+				WithDescription(`Show the "Powered by PurgeBot" footer`).
+				WithDefault(!removeBranding),
+			discord.NewRadioGroupOption("yes", "Remove branding").
+				WithDescription(`Hide the "Powered by PurgeBot" footer`).
+				WithDefault(removeBranding),
+		},
+	}
+
+	respond(discord.InteractionResponse{
+		Type: discord.InteractionResponseTypeModal,
+		Data: discord.NewModalCreate("customize_modal", "Customize PurgeBot",
+			discord.NewLabel("Bot name (leave blank to keep current)", nameInput),
+			discord.NewLabel("Upload a new avatar (JPG, PNG, GIF, WebP — max 8 MB)", discord.NewFileUpload("bot_avatar").WithRequired(false).
+				WithFileTypes(".png", ".jpg", ".jpeg", ".jfif", ".gif", ".webp")),
+			discord.NewLabel("Branding footer", brandingInput),
+		),
+	})
+}
+
 func (h *customizeHandler) Handle(ctx context.Context, i discord.ApplicationCommandInteraction, respond RespondFunc) {
 	if i.GuildID() == nil {
 		respond(ephemeralLocale(i, locale.MsgErrorGuildOnly))
 		return
 	}
-	if !h.r.hasPremium(ctx, *i.GuildID()) {
-		lang := interactionLocale(i)
-		components := []discord.LayoutComponent{
-			discord.NewContainer(
-				discord.NewTextDisplay(locale.MsgCustomizeNoPremium.In(lang)),
-			),
-		}
-		if h.r.cfg.PremiumSKUID != "" {
-			if skuID, err := snowflake.Parse(h.r.cfg.PremiumSKUID); err == nil {
-				components = append(components, discord.ActionRowComponent{
-					Components: []discord.InteractiveComponent{
-						discord.NewPremiumButton(skuID),
-					},
-				})
-			}
-		}
-		respond(discord.InteractionResponse{
-			Type: discord.InteractionResponseTypeCreateMessage,
-			Data: discord.MessageCreate{
-				Flags:      discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral,
-				Components: components,
-			},
-		})
+	premium, err := h.r.hasPremium(ctx, *i.GuildID())
+	if err != nil {
+		respond(ephemeralLocale(i, locale.MsgErrorInternal))
+		return
+	}
+	if !premium {
+		respond(h.noPremium(i))
 		return
 	}
 
 	data := i.SlashCommandInteractionData()
 	switch *data.SubCommandName {
-	case "edit":
-		existing, err := h.r.db.GetCustomization(ctx, int64(*i.GuildID()))
-		if err != nil {
-			h.r.logger.Error("get customization", zap.Error(err))
-			respond(ephemeralLocale(i, locale.MsgErrorInternal))
-			return
-		}
-
-		nameInput := discord.NewShortTextInput("bot_name").
-			WithPlaceholder("PurgeBot").
-			WithMaxLength(32).
-			WithRequired(false)
-		if existing != nil && existing.BotName != nil {
-			nameInput = nameInput.WithValue(*existing.BotName)
-		}
-
-		removeBranding := existing != nil && existing.RemoveBranding
-		brandingInput := discord.RadioGroupComponent{
-			CustomID: "remove_branding",
-			Options: []discord.RadioGroupOption{
-				discord.NewRadioGroupOption("no", "Keep branding").
-					WithDescription(`Show the "Powered by PurgeBot" footer`).
-					WithDefault(!removeBranding),
-				discord.NewRadioGroupOption("yes", "Remove branding").
-					WithDescription(`Hide the "Powered by PurgeBot" footer`).
-					WithDefault(removeBranding),
-			},
-		}
-
-		respond(discord.InteractionResponse{
-			Type: discord.InteractionResponseTypeModal,
-			Data: discord.NewModalCreate("customize_modal", "Customize PurgeBot",
-				discord.NewLabel("Bot name (leave blank to keep current)", nameInput),
-				discord.NewLabel("Upload a new avatar (JPG, PNG, GIF, WebP — max 8 MB)", discord.NewFileUpload("bot_avatar").WithRequired(false).
-					WithFileTypes(".png", ".jpg", ".jpeg", ".jfif", ".gif", ".webp")),
-				discord.NewLabel("Branding footer", brandingInput),
-			),
-		})
-
 	case "clear":
 		if err := h.r.db.DeleteCustomization(ctx, int64(*i.GuildID())); err != nil {
 			h.r.logger.Error("delete customization", zap.Error(err))

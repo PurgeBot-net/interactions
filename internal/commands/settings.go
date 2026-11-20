@@ -16,8 +16,7 @@ import (
 
 const (
 	// Keeps the list inside Discord's 2000-character message limit.
-	maxListedRoles = 50
-	// Leaves room in Discord's 3s window after the access gate's own lookups.
+	maxListedRoles  = 50
 	roleListTimeout = time.Second
 )
 

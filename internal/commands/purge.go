@@ -140,7 +140,7 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	}
 
 	// Interactive channel-skip flow (category targets only).
-	if skipChannels, ok := data.OptBool("skip_channels"); ok && skipChannels && j.TargetType == job.TargetTypeCategory {
+	if opensSkipUI(data) {
 		h.handleSkipChannelsUI(ctx, i, j, respond)
 		return
 	}
@@ -159,8 +159,7 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	}
 }
 
-// Must outlive the HTTP request: Go terminates the chunked body only when the handler returns,
-// so a REST call here spends Discord's 3s deadline.
+// Runs detached because it waits up to followupAttempts x followupRetryDelay for the purger's first edit.
 func (r *Router) warnStatusSurface(ctx context.Context, j *job.PurgeJob, lang string, channelID uint64, gap discord.Permissions) {
 	r.logger.Info("status surface degraded in invoking channel",
 		zap.String("guild_id", strconv.FormatUint(j.GuildID, 10)),
@@ -429,36 +428,24 @@ func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommand
 	active, err := job.SetActiveJob(ctx, h.r.redis, j)
 	if err != nil {
 		h.r.logger.Error("set active job", zap.Error(err))
-		h.r.client.Rest.UpdateInteractionResponse( //nolint:errcheck
-			snowflake.ID(j.ApplicationID),
-			j.InteractionToken,
-			discord.NewMessageUpdateV2(discord.NewContainer(
-				discord.NewTextDisplay(locale.MsgErrorInternal.In(lang)),
-			)),
-		)
+		h.r.editOriginal(ctx, i, discord.NewMessageUpdateV2(discord.NewContainer( //nolint:errcheck
+			discord.NewTextDisplay(locale.MsgErrorInternal.In(lang)),
+		)))
 		return false
 	}
 	if !active {
-		h.r.client.Rest.UpdateInteractionResponse( //nolint:errcheck
-			snowflake.ID(j.ApplicationID),
-			j.InteractionToken,
-			discord.NewMessageUpdateV2(discord.NewContainer(
-				discord.NewTextDisplay(locale.MsgPurgeAlreadyRunning.In(lang)),
-			)),
-		)
+		h.r.editOriginal(ctx, i, discord.NewMessageUpdateV2(discord.NewContainer( //nolint:errcheck
+			discord.NewTextDisplay(locale.MsgPurgeAlreadyRunning.In(lang)),
+		)))
 		return false
 	}
 
 	if err := job.Enqueue(ctx, h.r.redis, j); err != nil {
 		h.r.logger.Error("enqueue purge job", zap.Error(err))
 		job.DeleteActiveJob(ctx, h.r.redis, j.GuildID)
-		h.r.client.Rest.UpdateInteractionResponse( //nolint:errcheck
-			snowflake.ID(j.ApplicationID),
-			j.InteractionToken,
-			discord.NewMessageUpdateV2(discord.NewContainer(
-				discord.NewTextDisplay(locale.MsgErrorInternalStart.In(lang)),
-			)),
-		)
+		h.r.editOriginal(ctx, i, discord.NewMessageUpdateV2(discord.NewContainer( //nolint:errcheck
+			discord.NewTextDisplay(locale.MsgErrorInternalStart.In(lang)),
+		)))
 		return false
 	}
 	return true

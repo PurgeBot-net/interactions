@@ -72,15 +72,20 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 
 	srv := &http.Server{Addr: s.cfg.Addr, Handler: mux}
+	shutdown := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 		srv.Shutdown(context.Background()) //nolint:errcheck
+		close(shutdown)
 	}()
 
 	s.logger.Info("starting interactions server", zap.String("addr", s.cfg.Addr))
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		return err
 	}
+	// ListenAndServe returns once Shutdown starts; deferred handlers still need Redis and Postgres.
+	<-shutdown
+	s.router.Wait()
 	return nil
 }
 
