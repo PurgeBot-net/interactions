@@ -26,10 +26,6 @@ func (h *customizeHandler) Handle(ctx context.Context, i discord.ApplicationComm
 		respond(ephemeralLocale(i, locale.MsgErrorGuildOnly))
 		return
 	}
-	if i.Member() == nil || !i.Member().Permissions.Has(discord.PermissionAdministrator) {
-		respond(ephemeralLocale(i, locale.MsgCustomizeNoPerms))
-		return
-	}
 	if !h.r.hasPremium(ctx, *i.GuildID()) {
 		lang := interactionLocale(i)
 		components := []discord.LayoutComponent{

@@ -29,11 +29,6 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		return
 	}
 
-	if i.Member() == nil || !i.Member().Permissions.Has(discord.PermissionManageMessages) {
-		respond(ephemeralLocale(i, locale.MsgPurgeNoPerms))
-		return
-	}
-
 	data := i.SlashCommandInteractionData()
 
 	if data.SubCommandName == nil {

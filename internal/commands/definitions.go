@@ -171,13 +171,43 @@ func settingsCommand() discord.ApplicationCommandCreate {
 		Name:        "settings",
 		Description: "Change PurgeBot's settings for this server",
 		Options: []discord.ApplicationCommandOption{
-			discord.ApplicationCommandOptionString{
+			discord.ApplicationCommandOptionSubCommand{
 				Name:        "stats",
-				Description: "Keep purge statistics for /stats",
-				Required:    true,
-				Choices: []discord.ApplicationCommandOptionChoiceString{
-					{Name: "On", Value: "on"},
-					{Name: "Off (deletes recorded stats)", Value: "off"},
+				Description: "Turn purge statistics for /stats on or off",
+				Options: []discord.ApplicationCommandOption{
+					discord.ApplicationCommandOptionString{
+						Name:        "state",
+						Description: "Keep purge statistics for /stats",
+						Required:    true,
+						Choices: []discord.ApplicationCommandOptionChoiceString{
+							{Name: "On", Value: "on"},
+							{Name: "Off (deletes recorded stats)", Value: "off"},
+						},
+					},
+				},
+			},
+			discord.ApplicationCommandOptionSubCommandGroup{
+				Name:        "access",
+				Description: "Choose which roles can use PurgeBot",
+				Options: []discord.ApplicationCommandOptionSubCommand{
+					{
+						Name:        "add",
+						Description: "Let members with a role use PurgeBot (server owner only)",
+						Options: []discord.ApplicationCommandOption{
+							discord.ApplicationCommandOptionRole{Name: "role", Description: "Role whose members can use PurgeBot", Required: true},
+						},
+					},
+					{
+						Name:        "remove",
+						Description: "Stop a role from giving access to PurgeBot (server owner only)",
+						Options: []discord.ApplicationCommandOption{
+							discord.ApplicationCommandOptionRole{Name: "role", Description: "Role to take access away from", Required: true},
+						},
+					},
+					{
+						Name:        "list",
+						Description: "Show which roles can use PurgeBot",
+					},
 				},
 			},
 		},

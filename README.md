@@ -8,7 +8,8 @@ Discord interactions service for PurgeBot. Receives slash commands, modals, and 
 - Verifies Ed25519 signatures on every incoming request
 - Registers global slash commands on startup
 - Handles `/purge`, `/cancel`, `/help`, `/stats`, `/customize`, and `/settings` commands
-- Lets an administrator turn purge stats off with `/settings`, which deletes the server's recorded stats
+- Lets only the server owner and members holding a role the owner granted use `/purge`, `/customize`, `/stats` and `/settings`, and refuses when either lookup fails; `/help` and every way to stop a purge stay open
+- Lets the server owner grant and revoke roles with `/settings access`, and anyone with access turn purge stats off with `/settings stats`, which deletes the server's recorded stats
 - Handles autocomplete for the `target` option on `/purge`
 - Handles the `customize_modal` modal submission
 - Handles purge cancellation and channel-skip UI via `cancel:*` and `skip:*` components

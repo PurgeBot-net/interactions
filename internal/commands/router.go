@@ -56,6 +56,14 @@ func (r *Router) Handle(ctx context.Context, interaction discord.Interaction, re
 }
 
 func (r *Router) handleCommand(ctx context.Context, i discord.ApplicationCommandInteraction, respond RespondFunc) {
+	path := "/" + i.Data.CommandName()
+	if d, ok := i.Data.(discord.SlashCommandInteractionData); ok {
+		path = d.CommandPath()
+	}
+	if !r.passGate(ctx, i, commandGate(path), respond) {
+		return
+	}
+
 	switch i.Data.CommandName() {
 	case "purge":
 		newPurgeHandler(r).Handle(ctx, i, respond)
@@ -119,6 +127,13 @@ func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) bool {
 
 func (r *Router) handleAutocomplete(ctx context.Context, i discord.AutocompleteInteraction, respond RespondFunc) {
 	if i.Data.Focused().Name == "target" {
+		if ok, err := r.checkAccess(ctx, i, commandGate(i.Data.CommandPath())); !ok {
+			if err != nil {
+				r.logger.Warn("check access for autocomplete", zap.Error(err))
+			}
+			respond(autocompleteResult(nil))
+			return
+		}
 		newPurgeHandler(r).HandleAutocomplete(ctx, i, respond)
 		return
 	}
@@ -131,6 +146,9 @@ func (r *Router) handleAutocomplete(ctx context.Context, i discord.AutocompleteI
 func (r *Router) handleModal(ctx context.Context, i discord.ModalSubmitInteraction, respond RespondFunc) {
 	switch i.Data.CustomID {
 	case "customize_modal":
+		if !r.passGate(ctx, i, gateGranted, respond) {
+			return
+		}
 		newCustomizeHandler(r).HandleModal(ctx, i, respond)
 	}
 }

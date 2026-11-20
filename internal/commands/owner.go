@@ -30,6 +30,16 @@ func (r *Router) guildOwnerID(ctx context.Context, guildID snowflake.ID) uint64 
 		}
 	}
 
+	id := r.fetchGuildOwnerID(ctx, guildID)
+	if id != 0 {
+		r.redis.Set(ctx, cacheKey, id, guildOwnerTTL) //nolint:errcheck
+	}
+	return id
+}
+
+// Bypasses the key, which can name a former owner until it expires. Writes nothing back, so it
+// never replaces a newer owner the gateway stored meanwhile.
+func (r *Router) fetchGuildOwnerID(ctx context.Context, guildID snowflake.ID) uint64 {
 	lookupCtx, cancel := context.WithTimeout(ctx, guildOwnerLookupTimeout)
 	defer cancel()
 
@@ -38,8 +48,6 @@ func (r *Router) guildOwnerID(ctx context.Context, guildID snowflake.ID) uint64 
 		r.logger.Warn("get guild owner", zap.Error(err), zap.String("guild_id", guildID.String()))
 		return 0
 	}
-
-	r.redis.Set(ctx, cacheKey, uint64(guild.OwnerID), guildOwnerTTL) //nolint:errcheck
 	return uint64(guild.OwnerID)
 }
 
