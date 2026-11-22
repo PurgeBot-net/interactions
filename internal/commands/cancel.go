@@ -59,6 +59,10 @@ func (h *cancelHandler) Handle(ctx context.Context, i discord.ApplicationCommand
 		return
 	}
 
-	job.DeletePendingJob(ctx, h.r.redis, guildID)
+	if err := job.DeletePendingJob(ctx, h.r.redis, guildID); err != nil {
+		h.r.logger.Error("delete pending job", zap.Error(err))
+		respond(ephemeralLocale(i, locale.MsgErrorInternal))
+		return
+	}
 	respond(containerMessage(locale.MsgPurgeCancelledHeader.In(lang)))
 }

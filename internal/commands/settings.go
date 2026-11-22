@@ -168,13 +168,10 @@ func splitDeletedRoles(ids []int64, roles []discord.Role) (kept, gone []int64) {
 }
 
 func withoutPings(text string, flags ...discord.MessageFlags) discord.InteractionResponse {
-	msg := discord.MessageCreate{
-		Flags:           discord.MessageFlagIsComponentsV2,
-		Components:      []discord.LayoutComponent{discord.NewContainer(discord.NewTextDisplay(text))},
-		AllowedMentions: noPings,
-	}
 	return discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeCreateMessage,
-		Data: msg.WithFlags(flags...),
+		Data: discord.NewMessageCreateV2(discord.NewContainer(discord.NewTextDisplay(text))).
+			WithAllowedMentions(noPings).
+			WithFlags(flags...),
 	}
 }

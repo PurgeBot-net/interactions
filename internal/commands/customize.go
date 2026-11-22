@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/omit"
-	"github.com/disgoorg/snowflake/v2"
 	"go.uber.org/zap"
 
 	"github.com/PurgeBot-net/database"
@@ -19,30 +19,6 @@ import (
 type customizeHandler struct{ r *Router }
 
 func newCustomizeHandler(r *Router) *customizeHandler { return &customizeHandler{r} }
-
-func (h *customizeHandler) noPremium(i discord.Interaction) discord.InteractionResponse {
-	components := []discord.LayoutComponent{
-		discord.NewContainer(
-			discord.NewTextDisplay(locale.MsgCustomizeNoPremium.In(interactionLocale(i))),
-		),
-	}
-	if h.r.cfg.PremiumSKUID != "" {
-		if skuID, err := snowflake.Parse(h.r.cfg.PremiumSKUID); err == nil {
-			components = append(components, discord.ActionRowComponent{
-				Components: []discord.InteractiveComponent{
-					discord.NewPremiumButton(skuID),
-				},
-			})
-		}
-	}
-	return discord.InteractionResponse{
-		Type: discord.InteractionResponseTypeCreateMessage,
-		Data: discord.MessageCreate{
-			Flags:      discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral,
-			Components: components,
-		},
-	}
-}
 
 // A modal must be the first response, so the lookups run alongside the access gate, not after it.
 func (h *customizeHandler) HandleEdit(ctx context.Context, i discord.ApplicationCommandInteraction, respond RespondFunc) {
@@ -80,7 +56,7 @@ func (h *customizeHandler) HandleEdit(ctx context.Context, i discord.Application
 		respond(ephemeralLocale(i, locale.MsgErrorInternal))
 		return
 	} else if !p.ok {
-		respond(h.noPremium(i))
+		respond(h.r.premiumUpsell(i, locale.MsgErrorNoPremium))
 		return
 	}
 	res := <-stored
@@ -135,7 +111,7 @@ func (h *customizeHandler) Handle(ctx context.Context, i discord.ApplicationComm
 		return
 	}
 	if !premium {
-		respond(h.noPremium(i))
+		respond(h.r.premiumUpsell(i, locale.MsgErrorNoPremium))
 		return
 	}
 
@@ -151,8 +127,10 @@ func (h *customizeHandler) Handle(ctx context.Context, i discord.ApplicationComm
 		if _, err := h.r.client.Rest.UpdateCurrentMember(*i.GuildID(), discord.CurrentMemberUpdate{
 			Nick:   &empty,
 			Avatar: omit.NewNilPtr[discord.Icon](),
-		}); err != nil {
+		}, rest.WithCtx(ctx)); err != nil {
 			h.r.logger.Warn("reset bot nickname/avatar", zap.Error(err))
+			respond(ephemeralLocale(i, locale.MsgErrorInternal))
+			return
 		}
 		respond(publicLocale(i, locale.MsgCustomizeCleared))
 	}
@@ -215,9 +193,6 @@ func (h *customizeHandler) HandleModal(ctx context.Context, i discord.ModalSubmi
 		}
 		newIcon = icon
 		avatarBase64 = b64
-	} else if existing != nil {
-		// Preserve existing stored avatar (don't re-upload, just keep DB value).
-		avatarBase64 = existing.BotAvatar
 	}
 
 	p := database.UpsertCustomizationParams{
@@ -240,8 +215,10 @@ func (h *customizeHandler) HandleModal(ctx context.Context, i discord.ModalSubmi
 		memberUpdate.Avatar = omit.New(newIcon)
 	}
 	if memberUpdate.Nick != nil || newIcon != nil {
-		if _, err := h.r.client.Rest.UpdateCurrentMember(*i.GuildID(), memberUpdate); err != nil {
+		if _, err := h.r.client.Rest.UpdateCurrentMember(*i.GuildID(), memberUpdate, rest.WithCtx(ctx)); err != nil {
 			h.r.logger.Warn("apply bot nick/avatar", zap.Error(err))
+			respond(ephemeralLocale(i, locale.MsgErrorInternal))
+			return
 		}
 	}
 

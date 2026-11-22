@@ -8,7 +8,7 @@ Discord interactions service for PurgeBot. Receives slash commands, modals, and 
 - Verifies the Ed25519 signature of every `POST /interactions` request
 - Registers global slash commands on startup; `cmd/register` does the same as a one-off
 - Handles `/purge`, `/cancel`, `/help`, `/stats`, `/customize`, and `/settings` commands
-- Checks that the bot has View Channel, Read Message History and Manage Messages in every target channel, then claims the guild's single active-purge slot and queues the job in Redis for the purger
+- Checks that the bot has View Channel, Read Message History and Manage Messages in every target channel, plus Connect when the target is a single voice channel, then claims the guild's single active-purge slot and queues the job in Redis for the purger
 - Requires Premium for `/customize` and `/stats`: a guild listed in `FREE_PREMIUM_GUILD_IDS` or holding an active entitlement to `PREMIUM_SKU_ID`, cached for two minutes
 - Lets only the server owner and members holding a role the owner granted use `/purge`, `/customize`, `/stats` and `/settings`, and refuses when a lookup fails unless the other already confirmed access; `/help` and every way to stop a purge stay open
 - Lets the server owner grant and revoke roles with `/settings access add` and `remove`, and anyone with access list them with `/settings access list` and turn purge stats on or off with `/settings stats`; turning them off deletes the server's recorded stats
@@ -36,7 +36,7 @@ All configuration is loaded from environment variables (see `.env.example` in th
 | `REDIS_PASSWORD`         | Redis password                                           |
 | `REDIS_DB`               | Redis database index (default `0`)                       |
 | `INTERACTIONS_ADDR`      | Listen address (default `:8080`)                         |
-| `PREMIUM_SKU_ID`         | Discord premium SKU ID (optional)                        |
+| `PREMIUM_SKU_ID`         | Discord premium SKU ID (optional; must be numeric)       |
 | `FREE_PREMIUM_GUILD_IDS` | Comma-separated guild IDs with free premium (optional)   |
 | `SENTRY_DSN`             | Sentry-compatible error reporting (optional)             |
 | `LOG_LEVEL`              | `debug`, `info`, `warn`, `error` (default `info`)        |

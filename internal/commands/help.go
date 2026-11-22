@@ -63,9 +63,6 @@ func (h *helpHandler) Handle(ctx context.Context, i discord.ApplicationCommandIn
 
 	respond(discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeCreateMessage,
-		Data: discord.MessageCreate{
-			Flags:      discord.MessageFlagIsComponentsV2,
-			Components: components,
-		},
+		Data: discord.NewMessageCreateV2(components...),
 	})
 }

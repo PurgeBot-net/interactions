@@ -15,8 +15,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/PurgeBot-net/common/job"
 	"github.com/PurgeBot-net/database"
 	"github.com/PurgeBot-net/interactions/config"
+	"github.com/PurgeBot-net/locale"
 )
 
 type RespondFunc func(discord.InteractionResponse)
@@ -35,9 +37,9 @@ func NewRouter(cfg config.Config, logger *zap.Logger, db *database.Database, red
 }
 
 // RegisterCommands pushes all slash command definitions to Discord.
-func (r *Router) RegisterCommands(_ context.Context) error {
+func (r *Router) RegisterCommands(ctx context.Context) error {
 	appID := snowflake.ID(r.cfg.ApplicationID)
-	if _, err := r.client.Rest.SetGlobalCommands(appID, GlobalCommands()); err != nil {
+	if _, err := r.client.Rest.SetGlobalCommands(appID, GlobalCommands(), rest.WithCtx(ctx)); err != nil {
 		return err
 	}
 	r.logger.Info("registered slash commands")
@@ -101,7 +103,7 @@ func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) (bool, er
 	if slices.Contains(r.cfg.FreePremiumGuildIDs, uint64(guildID)) {
 		return true, nil
 	}
-	if r.cfg.PremiumSKUID == "" {
+	if r.cfg.PremiumSKUID == 0 {
 		return false, nil
 	}
 
@@ -110,15 +112,11 @@ func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) (bool, er
 		return val == "1", nil
 	}
 
-	skuID, err := snowflake.Parse(r.cfg.PremiumSKUID)
-	if err != nil {
-		return false, nil
-	}
 	entitlements, err := r.client.Rest.GetEntitlements(
 		snowflake.ID(r.cfg.ApplicationID),
 		rest.GetEntitlementsParams{
 			GuildID:      guildID,
-			SkuIDs:       []snowflake.ID{skuID},
+			SkuIDs:       []snowflake.ID{snowflake.ID(r.cfg.PremiumSKUID)},
 			ExcludeEnded: true,
 		},
 		rest.WithCtx(ctx),
@@ -135,6 +133,14 @@ func (r *Router) hasPremium(ctx context.Context, guildID snowflake.ID) (bool, er
 	}
 	r.redis.Set(ctx, cacheKey, cacheVal, premiumCacheTTL) //nolint:errcheck
 	return result, nil
+}
+
+func (r *Router) premiumUpsell(i discord.Interaction, msg locale.Message) discord.InteractionResponse {
+	m := discord.NewMessageCreateV2(discord.NewContainer(discord.NewTextDisplay(msg.In(interactionLocale(i))))).WithEphemeral(true)
+	if r.cfg.PremiumSKUID != 0 {
+		m.Components = append(m.Components, discord.NewActionRow(discord.NewPremiumButton(snowflake.ID(r.cfg.PremiumSKUID))))
+	}
+	return discord.InteractionResponse{Type: discord.InteractionResponseTypeCreateMessage, Data: m}
 }
 
 func (r *Router) handleAutocomplete(ctx context.Context, i discord.AutocompleteInteraction, respond RespondFunc) {
@@ -167,7 +173,7 @@ func (r *Router) handleModal(ctx context.Context, i discord.ModalSubmitInteracti
 func (r *Router) handleComponent(ctx context.Context, i discord.ComponentInteraction, respond RespondFunc) {
 	id := i.Data.CustomID()
 	switch {
-	case strings.HasPrefix(id, "cancel:"):
+	case strings.HasPrefix(id, job.CancelButtonPrefix):
 		newPurgeHandler(r).HandleCancel(ctx, i, respond)
 	case strings.HasPrefix(id, "skip:"):
 		newPurgeHandler(r).HandleSkip(ctx, i, respond)

@@ -34,18 +34,12 @@ func ephemeral(text string) discord.InteractionResponse {
 func containerMessage(text string) discord.InteractionResponse {
 	return discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeCreateMessage,
-		Data: discord.MessageCreate{
-			Flags:      discord.MessageFlagIsComponentsV2,
-			Components: []discord.LayoutComponent{discord.NewContainer(discord.NewTextDisplay(text))},
-		},
+		Data: discord.NewMessageCreateV2(discord.NewContainer(discord.NewTextDisplay(text))),
 	}
 }
 
 func ephemeralContainerCreate(text string) discord.MessageCreate {
-	return discord.MessageCreate{
-		Flags:      discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral,
-		Components: []discord.LayoutComponent{discord.NewContainer(discord.NewTextDisplay(text))},
-	}
+	return discord.NewMessageCreateV2(discord.NewContainer(discord.NewTextDisplay(text))).WithEphemeral(true)
 }
 
 // Echoed input and channel names have no length cap of their own, and Discord refuses the whole message.

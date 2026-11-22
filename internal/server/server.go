@@ -5,9 +5,11 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/disgoorg/disgo"
 	"github.com/disgoorg/disgo/bot"
@@ -22,12 +24,12 @@ import (
 	"github.com/PurgeBot-net/interactions/internal/commands"
 )
 
+// Discord's payloads are a few KB; the cap stops an unsigned body from being buffered and hashed whole.
+const maxBodyBytes = 1 << 20
+
 type Server struct {
 	cfg       config.Config
 	logger    *zap.Logger
-	db        *database.Database
-	redis     *redis.Client
-	client    *bot.Client
 	publicKey ed25519.PublicKey
 	router    *commands.Router
 }
@@ -47,16 +49,12 @@ func New(cfg config.Config, logger *zap.Logger, db *database.Database, redis *re
 		return nil, fmt.Errorf("create discord client: %w", err)
 	}
 
-	s := &Server{
+	return &Server{
 		cfg:       cfg,
 		logger:    logger,
-		db:        db,
-		redis:     redis,
-		client:    client,
 		publicKey: ed25519.PublicKey(keyBytes),
-	}
-	s.router = commands.NewRouter(cfg, logger, db, redis, client)
-	return s, nil
+		router:    commands.NewRouter(cfg, logger, db, redis, client),
+	}, nil
 }
 
 func (s *Server) Start(ctx context.Context) error {
@@ -71,7 +69,7 @@ func (s *Server) Start(ctx context.Context) error {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	srv := &http.Server{Addr: s.cfg.Addr, Handler: mux}
+	srv := &http.Server{Addr: s.cfg.Addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	shutdown := make(chan struct{})
 	go func() {
 		<-ctx.Done()
@@ -90,7 +88,11 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 func (s *Server) handleInteraction(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
+		http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+		return
+	}
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -100,23 +102,14 @@ func (s *Server) handleInteraction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Discord ping/pong handshake
-	var raw struct {
-		Type discord.InteractionType `json:"type"`
-	}
-	if err := json.Unmarshal(body, &raw); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	if raw.Type == discord.InteractionTypePing {
-		respond(w, discord.InteractionResponse{Type: discord.InteractionResponseTypePong})
-		return
-	}
-
 	interaction, err := discord.UnmarshalInteraction(body)
 	if err != nil {
 		s.logger.Error("unmarshal interaction", zap.Error(err))
 		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if interaction.Type() == discord.InteractionTypePing {
+		respond(w, discord.InteractionResponse{Type: discord.InteractionResponseTypePong})
 		return
 	}
 

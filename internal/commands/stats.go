@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/disgoorg/disgo/discord"
-	"github.com/disgoorg/snowflake/v2"
 	chart "github.com/wcharczuk/go-chart/v2"
 	"github.com/wcharczuk/go-chart/v2/drawing"
 	"go.uber.org/zap"
@@ -44,57 +43,20 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		return
 	}
 	if !premium {
-		components := []discord.LayoutComponent{
-			discord.NewContainer(
-				discord.NewTextDisplay(locale.MsgStatsNoPremium.In(interactionLocale(i))),
-			),
-		}
-		if h.r.cfg.PremiumSKUID != "" {
-			if skuID, err := snowflake.Parse(h.r.cfg.PremiumSKUID); err == nil {
-				components = append(components, discord.ActionRowComponent{
-					Components: []discord.InteractiveComponent{
-						discord.NewPremiumButton(skuID),
-					},
-				})
-			}
-		}
-		respond(discord.InteractionResponse{
-			Type: discord.InteractionResponseTypeCreateMessage,
-			Data: discord.MessageCreate{
-				Flags:      discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral,
-				Components: components,
-			},
-		})
+		respond(h.r.premiumUpsell(i, locale.MsgErrorNoPremium))
 		return
 	}
 
-	data := i.SlashCommandInteractionData()
 	days := 0
-	if d, ok := data.OptInt("days"); ok {
+	if d, ok := i.SlashCommandInteractionData().OptInt("days"); ok {
 		days = d
 	}
-
-	respond(discord.InteractionResponse{
-		Type: discord.InteractionResponseTypeDeferredCreateMessage,
-	})
-
 	lang := interactionLocale(i)
-	guildID := *i.GuildID()
 
-	updateErr := func(msg locale.Message) {
-		flags := discord.MessageFlagIsComponentsV2
-		_ = h.r.editOriginal(ctx, i, discord.MessageUpdate{
-			Components: &[]discord.LayoutComponent{
-				discord.NewContainer(discord.NewTextDisplay(msg.In(lang))),
-			},
-			Flags: &flags,
-		})
-	}
-
-	stats, err := h.r.db.GetGuildStats(ctx, int64(guildID), days)
+	stats, err := h.r.db.GetGuildStats(ctx, int64(*i.GuildID()), days)
 	if err != nil {
 		h.r.logger.Error("get guild stats", zap.Error(err))
-		updateErr(locale.MsgErrorInternal)
+		respond(ephemeralLocale(i, locale.MsgErrorInternal))
 		return
 	}
 
@@ -102,11 +64,7 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 
 	if stats.TotalPurges == 0 {
 		lines = append(lines, locale.MsgStatsNoPurges.In(lang))
-		flags := discord.MessageFlagIsComponentsV2
-		_ = h.r.editOriginal(ctx, i, discord.MessageUpdate{
-			Components: &[]discord.LayoutComponent{discord.NewContainer(discord.NewTextDisplay(strings.Join(lines, "\n")))},
-			Flags:      &flags,
-		})
+		respond(containerMessage(strings.Join(lines, "\n")))
 		return
 	}
 
@@ -118,29 +76,22 @@ func (h *statsHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	card := []discord.ContainerSubComponent{discord.NewTextDisplay(strings.Join(lines, "\n"))}
 	var files []*discord.File
 
-	if stats.TotalDeleted > 0 {
-		png, chartErr := generateStatsChart(stats.ChartBars, days, stats.Monthly)
-		if chartErr != nil {
-			h.r.logger.Warn("generate stats chart", zap.Error(chartErr))
-		} else {
-			card = append(card, discord.NewMediaGallery(
-				discord.MediaGalleryItem{
-					Media: discord.UnfurledMediaItem{URL: "attachment://stats.png"},
-				},
-			))
-			files = []*discord.File{discord.NewFile("stats.png", "Purge activity chart", bytes.NewReader(png))}
-		}
+	png, chartErr := generateStatsChart(stats.ChartBars, days, stats.Monthly)
+	if chartErr != nil {
+		h.r.logger.Warn("generate stats chart", zap.Error(chartErr))
+	} else if png != nil {
+		card = append(card, discord.NewMediaGallery(
+			discord.MediaGalleryItem{
+				Media: discord.UnfurledMediaItem{URL: "attachment://stats.png"},
+			},
+		))
+		files = []*discord.File{discord.NewFile("stats.png", "Purge activity chart", bytes.NewReader(png))}
 	}
 
-	components := []discord.LayoutComponent{discord.NewContainer(card...)}
-	flags := discord.MessageFlagIsComponentsV2
-	if err := h.r.editOriginal(ctx, i, discord.MessageUpdate{
-		Components: &components,
-		Files:      files,
-		Flags:      &flags,
-	}); err != nil {
-		h.r.logger.Warn("update stats response", zap.Error(err))
-	}
+	respond(discord.InteractionResponse{
+		Type: discord.InteractionResponseTypeCreateMessage,
+		Data: discord.NewMessageCreateV2(discord.NewContainer(card...)).WithFiles(files...),
+	})
 }
 
 func generateStatsChart(data []database.DailyPurgeStat, days int, monthly bool) ([]byte, error) {
@@ -162,6 +113,14 @@ func generateStatsChart(data []database.DailyPurgeStat, days int, monthly bool) 
 		title = fmt.Sprintf("Messages Deleted — Last %d Days", days)
 		labelFmt = "Jan 2"
 		labelInterval = max(days/7, 1)
+	}
+
+	var peak int64
+	for _, d := range data {
+		peak = max(peak, d.Deleted)
+	}
+	if peak == 0 {
+		return nil, nil
 	}
 
 	bars := make([]chart.Value, len(data))
@@ -197,6 +156,8 @@ func generateStatsChart(data []database.DailyPurgeStat, days int, monthly bool) 
 		XAxis:      chart.Style{FontColor: textColor, StrokeColor: gridColor},
 		YAxis: chart.YAxis{
 			Style: chart.Style{FontColor: textColor, StrokeColor: gridColor},
+			// Without a range go-chart spans min..max, drawing the smallest bar at zero height.
+			Range: &chart.ContinuousRange{Min: 0, Max: float64(peak)},
 		},
 		Bars: bars,
 	}

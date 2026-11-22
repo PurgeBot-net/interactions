@@ -110,7 +110,7 @@ func (r *Router) checkPurgePermissions(ctx context.Context, i discord.Interactio
 	evaluated := len(targets)
 	for _, ch := range targets {
 		have := botChannelPermissions(base, guildID, botID, member.RoleIDs, ch.PermissionOverwrites())
-		missing := missingForChannel(have)
+		missing := missingForChannel(have) | connectMissing(ch.Type(), j.TargetType, have)
 		if missing == 0 {
 			continue
 		}
@@ -157,9 +157,7 @@ func purgeTargetChannels(channels []discord.GuildChannel, j *job.PurgeJob) []dis
 			return nil
 		}
 
-		switch ch.Type() {
-		case discord.ChannelTypeGuildText, discord.ChannelTypeGuildNews,
-			discord.ChannelTypeGuildVoice, discord.ChannelTypeGuildForum:
+		if isPurgeableChannel(ch.Type()) {
 			out = append(out, ch)
 		}
 	}
@@ -172,6 +170,14 @@ func forumIsOutOfReach(kind discord.ChannelType, target job.TargetType, missing 
 	return kind == discord.ChannelTypeGuildForum &&
 		missing.Has(discord.PermissionViewChannel) &&
 		target != job.TargetTypeChannel
+}
+
+// Only a single target refuses over Connect, so a locked voice channel cannot block a server or category purge.
+func connectMissing(kind discord.ChannelType, target job.TargetType, have discord.Permissions) discord.Permissions {
+	if kind == discord.ChannelTypeGuildVoice && target == job.TargetTypeChannel && !have.Has(discord.PermissionConnect) {
+		return discord.PermissionConnect
+	}
+	return 0
 }
 
 func botGuildPermissions(guildID snowflake.ID, botRoleIDs []snowflake.ID, rolePerms map[snowflake.ID]discord.Permissions) discord.Permissions {

@@ -22,23 +22,23 @@ func main() {
 		panic("load config: " + err.Error())
 	}
 
-	logger, err := log.New(cfg.LogLevel, cfg.LogJSON)
+	logger, err := log.New(cfg.Log.Level, cfg.Log.JSON)
 	if err != nil {
 		panic("create logger: " + err.Error())
 	}
-	logger = log.WithSentry(logger, cfg.SentryDSN)
+	logger = log.WithSentry(logger, cfg.Log.SentryDSN)
 	defer func() { _ = logger.Sync() }()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	db, err := database.New(ctx, cfg.DatabaseURL())
+	db, err := database.New(ctx, cfg.Database.URL())
 	if err != nil {
 		logger.Fatal("connect database", zap.Error(err))
 	}
 	defer db.Close()
 
-	redis, err := rdb.New(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	redis, err := rdb.New(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 	if err != nil {
 		logger.Fatal("connect redis", zap.Error(err))
 	}

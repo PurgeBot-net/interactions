@@ -147,7 +147,7 @@ func (f *followup) finish() {
 }
 
 func toUpdate(m discord.MessageCreate) discord.MessageUpdate {
-	u := discord.MessageUpdate{AllowedMentions: m.AllowedMentions}
+	u := discord.MessageUpdate{AllowedMentions: m.AllowedMentions, Files: m.Files}
 	if len(m.Components) > 0 {
 		u.Components = &m.Components
 	}

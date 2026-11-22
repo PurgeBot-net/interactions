@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/PurgeBot-net/common/job"
+	"github.com/PurgeBot-net/common/log"
 	"github.com/PurgeBot-net/locale"
 )
 
@@ -51,9 +51,10 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 	}
 
 	lang := interactionLocale(i)
+	now := time.Now()
 
 	j := &job.PurgeJob{
-		ID:                   fmt.Sprintf("%d-%d", *i.GuildID(), time.Now().UnixNano()),
+		ID:                   job.NewID(uint64(*i.GuildID()), now),
 		GuildID:              uint64(*i.GuildID()),
 		Locale:               lang,
 		PurgeType:            purgeType,
@@ -61,7 +62,7 @@ func (h *purgeHandler) Handle(ctx context.Context, i discord.ApplicationCommandI
 		InteractionToken:     i.Token(),
 		InteractionChannelID: uint64(i.Channel().ID()),
 		RequestedByID:        uint64(i.User().ID),
-		CreatedAt:            time.Now(),
+		CreatedAt:            now,
 	}
 
 	if targetStr, ok := data.OptString("target"); ok {
@@ -175,7 +176,7 @@ func (r *Router) targetInGuild(ctx context.Context, j *job.PurgeJob) bool {
 	defer cancel()
 	ch, err := r.client.Rest.GetChannel(snowflake.ID(j.TargetID), rest.WithCtx(lookupCtx))
 	if err != nil {
-		r.logger.Warn("look up purge target", zap.Error(err), zap.Uint64("target_id", j.TargetID))
+		r.logger.Warn("look up purge target", zap.Error(err), log.ID("target_id", j.TargetID))
 		return true
 	}
 	gc, ok := ch.(discord.GuildChannel)
@@ -191,8 +192,8 @@ func (r *Router) targetInGuild(ctx context.Context, j *job.PurgeJob) bool {
 // Runs detached because it waits up to followupAttempts x followupRetryDelay for the purger's first edit.
 func (r *Router) warnStatusSurface(ctx context.Context, j *job.PurgeJob, lang string, channelID uint64, gap discord.Permissions) {
 	r.logger.Info("status surface degraded in invoking channel",
-		zap.String("guild_id", strconv.FormatUint(j.GuildID, 10)),
-		zap.String("channel_id", strconv.FormatUint(channelID, 10)),
+		log.ID("guild_id", j.GuildID),
+		log.ID("channel_id", channelID),
 		zap.String("missing", permissionNames(gap)),
 	)
 	body := ephemeralContainerCreate(locale.MsgPurgeNoStatusChannel.In(lang, permissionNames(gap)))
@@ -201,11 +202,7 @@ func (r *Router) warnStatusSurface(ctx context.Context, j *job.PurgeJob, lang st
 		var err error
 		for attempt := range followupAttempts {
 			if attempt > 0 {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(followupRetryDelay):
-				}
+				time.Sleep(followupRetryDelay)
 			}
 			// A followup sent while the reply is still loading edits that reply instead and
 			// drops the ephemeral flag, so the warning would replace the status message and
@@ -234,36 +231,20 @@ func (r *Router) warnStatusSurface(ctx context.Context, j *job.PurgeJob, lang st
 func (h *purgeHandler) handleSkipChannelsUI(ctx context.Context, i discord.ApplicationCommandInteraction, j *job.PurgeJob, respond RespondFunc) {
 	lang := interactionLocale(i)
 
-	channels, err := h.r.client.Rest.GetGuildChannels(*i.GuildID())
+	channels, err := h.r.client.Rest.GetGuildChannels(*i.GuildID(), rest.WithCtx(ctx))
 	if err != nil {
 		h.r.logger.Error("get guild channels for skip ui", zap.Error(err))
 		respond(ephemeralLocale(i, locale.MsgErrorInternal))
 		return
 	}
 
-	var options []discord.StringSelectMenuOption
-	for _, ch := range channels {
-		if ch.ParentID() == nil || uint64(*ch.ParentID()) != j.TargetID {
-			continue
-		}
-		if !isPurgeableChannel(ch.Type()) {
-			continue
-		}
-		options = append(options, discord.StringSelectMenuOption{
-			Label: choiceName(channelPrefix(ch.Type()), ch.Name()),
-			Value: ch.ID().String(),
-		})
-	}
-
+	options := skipChannelOptions(channels, j.TargetID)
 	if len(options) == 0 {
 		respond(ephemeralLocale(i, locale.MsgPurgeInvalidTarget))
 		return
 	}
-	if len(options) > 25 {
-		options = options[:25]
-	}
 
-	job.DeletePendingJob(ctx, h.r.redis, j.GuildID)
+	job.DeletePendingJob(ctx, h.r.redis, j.GuildID) //nolint:errcheck
 	if err := job.StorePendingJob(ctx, h.r.redis, j); err != nil {
 		h.r.logger.Error("store pending job", zap.Error(err))
 		respond(ephemeralLocale(i, locale.MsgErrorInternal))
@@ -274,33 +255,57 @@ func (h *purgeHandler) handleSkipChannelsUI(ctx context.Context, i discord.Appli
 
 	respond(discord.InteractionResponse{
 		Type: discord.InteractionResponseTypeCreateMessage,
-		Data: discord.MessageCreate{
-			Flags: discord.MessageFlagIsComponentsV2 | discord.MessageFlagEphemeral,
-			Components: []discord.LayoutComponent{
-				discord.NewContainer(
-					discord.NewTextDisplay(locale.MsgSkipChannelsPrompt.In(lang)),
-				),
-				discord.ActionRowComponent{Components: []discord.InteractiveComponent{
-					discord.NewStringSelectMenu("skip:select:"+guildIDStr, "").
-						WithMinValues(0).
-						WithMaxValues(len(options)).
-						AddOptions(options...),
-				}},
-				discord.ActionRowComponent{Components: []discord.InteractiveComponent{
-					discord.ButtonComponent{
-						Style:    discord.ButtonStylePrimary,
-						Label:    locale.MsgSkipChannelsContinue.In(lang),
-						CustomID: "skip:continue:" + guildIDStr,
-					},
-					discord.ButtonComponent{
-						Style:    discord.ButtonStyleSecondary,
-						Label:    locale.MsgCancelButton.In(lang),
-						CustomID: "skip:cancel:" + guildIDStr,
-					},
-				}},
-			},
-		},
+		Data: discord.NewMessageCreateV2(
+			discord.NewContainer(
+				discord.NewTextDisplay(locale.MsgSkipChannelsPrompt.In(lang)),
+			),
+			discord.ActionRowComponent{Components: []discord.InteractiveComponent{
+				discord.NewStringSelectMenu("skip:select:"+guildIDStr, "").
+					WithMinValues(0).
+					WithMaxValues(len(options)).
+					AddOptions(options...),
+			}},
+			discord.ActionRowComponent{Components: []discord.InteractiveComponent{
+				discord.ButtonComponent{
+					Style:    discord.ButtonStylePrimary,
+					Label:    locale.MsgSkipChannelsContinue.In(lang),
+					CustomID: "skip:continue:" + guildIDStr,
+				},
+				discord.ButtonComponent{
+					Style:    discord.ButtonStyleSecondary,
+					Label:    locale.MsgCancelButton.In(lang),
+					CustomID: "skip:cancel:" + guildIDStr,
+				},
+			}},
+		).WithEphemeral(true),
 	})
+}
+
+func notStarted(lang, reason string) discord.MessageUpdate {
+	return discord.NewMessageUpdateV2(discord.NewContainer(
+		discord.NewTextDisplay(locale.MsgPurgeNotStarted.In(lang, reason)),
+	))
+}
+
+// A select menu takes 25 options; sidebar order makes the ones left out the bottom of the category.
+func skipChannelOptions(channels []discord.GuildChannel, categoryID uint64) []discord.StringSelectMenuOption {
+	var children []discord.GuildChannel
+	for _, ch := range channels {
+		if p := ch.ParentID(); p != nil && uint64(*p) == categoryID && isPurgeableChannel(ch.Type()) {
+			children = append(children, ch)
+		}
+	}
+	rows := channelRows(children)
+	slices.SortStableFunc(rows, bySidebarOrder)
+
+	options := make([]discord.StringSelectMenuOption, 0, min(len(rows), 25))
+	for _, ch := range rows[:min(len(rows), 25)] {
+		options = append(options, discord.StringSelectMenuOption{
+			Label: choiceName(channelPrefix(ch.Kind), ch.Name),
+			Value: ch.ID.String(),
+		})
+	}
+	return options
 }
 
 // HandleSkip handles the skip:select / skip:continue / skip:cancel component interactions.
@@ -322,21 +327,15 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 	}
 
 	lang := interactionLocale(i)
-	notStarted := func(reason locale.Message) discord.InteractionResponse {
-		return discord.InteractionResponse{
-			Type: discord.InteractionResponseTypeUpdateMessage,
-			Data: discord.NewMessageUpdateV2(discord.NewContainer(
-				discord.NewTextDisplay(locale.MsgPurgeNotStarted.In(lang, reason.In(lang))),
-			)),
-		}
+	refuse := func(reason string) discord.InteractionResponse {
+		return discord.InteractionResponse{Type: discord.InteractionResponseTypeUpdateMessage, Data: notStarted(lang, reason)}
 	}
 
 	switch action {
 	case "select":
-		// Store the user's channel selections.
 		data, ok := i.Data.(discord.StringSelectMenuInteractionData)
 		if !ok {
-			respond(discord.InteractionResponse{Type: discord.InteractionResponseTypeDeferredUpdateMessage})
+			respond(ack)
 			return
 		}
 		var ids []uint64
@@ -345,16 +344,19 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 				ids = append(ids, id)
 			}
 		}
+		// The menu keeps showing the choice, so a silent failure would purge channels the user excluded.
 		if err := job.StoreSkipSelection(ctx, h.r.redis, guildID, ids); err != nil {
 			h.r.logger.Error("store skip selection", zap.Error(err))
+			respond(ephemeralLocale(i, locale.MsgErrorInternal))
+			return
 		}
-		respond(discord.InteractionResponse{Type: discord.InteractionResponseTypeDeferredUpdateMessage})
+		respond(ack)
 
 	case "continue":
 		j, err := job.GetPendingJob(ctx, h.r.redis, guildID)
 		if err != nil {
 			h.r.logger.Error("get pending job", zap.Error(err))
-			respond(notStarted(locale.MsgErrorInternal))
+			respond(refuse(locale.MsgErrorInternal.In(lang)))
 			return
 		}
 		if j == nil {
@@ -362,7 +364,7 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 				respond(ack)
 				return
 			}
-			respond(notStarted(locale.MsgSkipChannelsExpired))
+			respond(refuse(locale.MsgSkipChannelsExpired.In(lang)))
 			return
 		}
 
@@ -372,28 +374,28 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 			return
 		}
 
-		skipIDs, _ := job.GetSkipSelection(ctx, h.r.redis, guildID)
+		skipIDs, err := job.GetSkipSelection(ctx, h.r.redis, guildID)
+		job.DeletePendingJob(ctx, h.r.redis, guildID) //nolint:errcheck
+		if err != nil {
+			h.r.logger.Error("get skip selection", zap.Error(err))
+			respond(refuse(locale.MsgErrorInternal.In(lang)))
+			return
+		}
 		j.SkipChannelIDs = skipIDs
-		job.DeletePendingJob(ctx, h.r.redis, guildID)
 
 		if refusal, blocked := h.r.checkPurgePermissions(ctx, i, j, lang); blocked {
-			respond(discord.InteractionResponse{
-				Type: discord.InteractionResponseTypeUpdateMessage,
-				Data: discord.NewMessageUpdateV2(discord.NewContainer(
-					discord.NewTextDisplay(locale.MsgPurgeNotStarted.In(lang, refusal)),
-				)),
-			})
+			respond(refuse(refusal))
 			return
 		}
 
 		active, err := job.SetActiveJob(ctx, h.r.redis, j)
 		if err != nil {
 			h.r.logger.Error("set active job (skip continue)", zap.Error(err))
-			respond(notStarted(locale.MsgErrorInternal))
+			respond(refuse(locale.MsgErrorInternal.In(lang)))
 			return
 		}
 		if !active {
-			respond(notStarted(locale.MsgPurgeAlreadyRunning))
+			respond(refuse(locale.MsgPurgeAlreadyRunning.In(lang)))
 			return
 		}
 
@@ -420,13 +422,11 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 
 		if err := job.Enqueue(ctx, h.r.redis, j); err != nil {
 			h.r.logger.Error("enqueue job (skip continue)", zap.Error(err))
-			job.DeleteActiveJob(ctx, h.r.redis, j.GuildID)
+			job.DeleteActiveJob(ctx, h.r.redis, *j)
 			h.r.client.Rest.UpdateInteractionResponse( //nolint:errcheck
 				snowflake.ID(j.ApplicationID),
 				j.InteractionToken,
-				discord.NewMessageUpdateV2(discord.NewContainer(
-					discord.NewTextDisplay(locale.MsgPurgeNotStarted.In(lang, locale.MsgErrorInternal.In(lang))),
-				)),
+				notStarted(lang, locale.MsgErrorInternal.In(lang)),
 			)
 		}
 
@@ -436,7 +436,7 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 			respond(ephemeral(locale.MsgCancelNotAllowed.In(lang)))
 			return
 		}
-		job.DeletePendingJob(ctx, h.r.redis, guildID)
+		job.DeletePendingJob(ctx, h.r.redis, guildID) //nolint:errcheck
 		respond(discord.InteractionResponse{
 			Type: discord.InteractionResponseTypeUpdateMessage,
 			Data: discord.NewMessageUpdateV2(discord.NewContainer(
@@ -452,32 +452,27 @@ func (h *purgeHandler) HandleSkip(ctx context.Context, i discord.ComponentIntera
 // enqueue stores the active job, sends the deferred response, and pushes the job to Redis.
 // Reports whether the job actually reached the queue.
 func (h *purgeHandler) enqueue(ctx context.Context, i discord.ApplicationCommandInteraction, j *job.PurgeJob, lang string, respond RespondFunc) bool {
-	respond(discord.InteractionResponse{
-		Type: discord.InteractionResponseTypeDeferredCreateMessage,
-		Data: discord.NewMessageCreate(),
-	})
+	respond(discord.InteractionResponse{Type: discord.InteractionResponseTypeDeferredCreateMessage})
 
-	notStarted := func(reason locale.Message) {
-		h.r.editOriginal(ctx, i, discord.NewMessageUpdateV2(discord.NewContainer( //nolint:errcheck
-			discord.NewTextDisplay(locale.MsgPurgeNotStarted.In(lang, reason.In(lang))),
-		)))
+	refuse := func(reason locale.Message) {
+		h.r.editOriginal(ctx, i, notStarted(lang, reason.In(lang))) //nolint:errcheck
 	}
 
 	active, err := job.SetActiveJob(ctx, h.r.redis, j)
 	if err != nil {
 		h.r.logger.Error("set active job", zap.Error(err))
-		notStarted(locale.MsgErrorInternal)
+		refuse(locale.MsgErrorInternal)
 		return false
 	}
 	if !active {
-		notStarted(locale.MsgPurgeAlreadyRunning)
+		refuse(locale.MsgPurgeAlreadyRunning)
 		return false
 	}
 
 	if err := job.Enqueue(ctx, h.r.redis, j); err != nil {
 		h.r.logger.Error("enqueue purge job", zap.Error(err))
-		job.DeleteActiveJob(ctx, h.r.redis, j.GuildID)
-		notStarted(locale.MsgErrorInternal)
+		job.DeleteActiveJob(ctx, h.r.redis, *j)
+		refuse(locale.MsgErrorInternal)
 		return false
 	}
 	return true
@@ -509,18 +504,17 @@ func (h *purgeHandler) HandleAutocomplete(ctx context.Context, i discord.Autocom
 }
 
 func (h *purgeHandler) HandleCancel(ctx context.Context, i discord.ComponentInteraction, respond RespondFunc) {
-	// Custom ID format: "cancel:{jobID}:{requestedByID}"
-	tail := i.Data.CustomID()[7:] // strip "cancel:"
-	jobID, requesterID, _ := strings.Cut(tail, ":")
-
-	requestedByID, _ := strconv.ParseUint(requesterID, 10, 64)
+	jobID, requestedByID := job.ParseCancelButtonID(i.Data.CustomID())
 	if !h.r.canCancelJob(ctx, i, requestedByID) {
 		respond(ephemeral(locale.MsgCancelNotAllowed.In(interactionLocale(i))))
 		return
 	}
 
+	// The status message and its button stay untouched, so the user can retry.
 	if err := job.Cancel(ctx, h.r.redis, jobID); err != nil {
 		h.r.logger.Error("cancel job", zap.Error(err))
+		respond(ephemeralLocale(i, locale.MsgErrorInternal))
+		return
 	}
 
 	lang := interactionLocale(i)
